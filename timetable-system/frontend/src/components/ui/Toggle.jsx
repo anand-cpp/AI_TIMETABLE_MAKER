@@ -26,7 +26,7 @@ const Toggle = ({
           'relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent',
           'transition-colors duration-200 ease-in-out',
           'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-          checked ? 'bg-primary-600' : 'bg-gray-200'
+          checked ? 'bg-blue-600 dark:bg-cyan-500' : 'bg-slate-300 dark:bg-slate-700'
         )}
       >
         <span

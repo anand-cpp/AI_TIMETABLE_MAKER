@@ -145,9 +145,9 @@ const SubjectForm = ({ onSubmit, onCancel, loading, initialData, preselectedClas
       />
 
       {/* Type selector */}
-      <div className="form-group">
-        <label className="form-label">
-          Subject Type <span className="text-red-500">*</span>
+      <div>
+        <label className="block text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-200 mb-2">
+          Subject Type <span className="text-rose-600 dark:text-rose-400">*</span>
         </label>
         <div className="grid grid-cols-3 gap-3">
           {TYPE_OPTIONS.map((opt) => {
@@ -159,14 +159,14 @@ const SubjectForm = ({ onSubmit, onCancel, loading, initialData, preselectedClas
                 type="button"
                 onClick={() => handleTypeChange(opt.value)}
                 disabled={!!initialData}
-                className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
                   isSelected
-                    ? 'border-primary-500 bg-primary-50 text-primary-700'
-                    : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                    ? 'border-blue-500 bg-blue-500/15 text-blue-700 dark:text-cyan-300 font-extrabold shadow-sm'
+                    : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-950'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <Icon className="w-5 h-5" />
-                <span className="text-xs font-semibold">{opt.label}</span>
+                <span className="text-xs font-bold">{opt.label}</span>
               </button>
             );
           })}
@@ -174,10 +174,10 @@ const SubjectForm = ({ onSubmit, onCancel, loading, initialData, preselectedClas
       </div>
 
       {/* Type-specific fields */}
-      <div className="border-t border-gray-200 pt-4">
+      <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
         <div className="flex items-center gap-2 mb-4">
-          <TypeIcon className="w-4 h-4 text-primary-600" />
-          <p className="text-sm font-semibold text-gray-700">
+          <TypeIcon className="w-4 h-4 text-blue-500" />
+          <p className="text-sm font-bold text-slate-900 dark:text-white">
             {subjectType.charAt(0).toUpperCase() + subjectType.slice(1)} Configuration
           </p>
         </div>

@@ -86,7 +86,7 @@ const EmailConfigForm = ({ config, onSubmit, loading }) => {
         />
       </div>
 
-      <div className="p-4 bg-gray-50 rounded-lg">
+      <div className="p-4 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl">
         <Toggle
           checked={secure}
           onChange={(val) => setValue('secure', val)}
@@ -110,29 +110,24 @@ const EmailConfigForm = ({ config, onSubmit, loading }) => {
         })}
       />
 
-      <div className="form-group">
-        <label className="form-label">
-          SMTP Password / App Password <span className="text-red-500">*</span>
-        </label>
-        <div className="relative">
-          <input
-            type={showPass ? 'text' : 'password'}
-            placeholder={config?.isConfigured ? '••••••••' : 'Enter app password'}
-            className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            {...register('pass')}
-          />
+      <Input
+        label="SMTP Password / App Password"
+        type={showPass ? 'text' : 'password'}
+        required
+        placeholder={config?.isConfigured ? '••••••••' : 'Enter app password'}
+        hint="For Gmail: use an App Password (Google Account → Security → App Passwords)"
+        error={errors.pass?.message}
+        rightIcon={
           <button
             type="button"
             onClick={() => setShowPass((s) => !s)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
           >
             {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
-        </div>
-        <p className="form-hint">
-          For Gmail: use an App Password (Google Account → Security → App Passwords)
-        </p>
-      </div>
+        }
+        {...register('pass')}
+      />
 
       <div className="grid grid-cols-2 gap-4">
         <Input
