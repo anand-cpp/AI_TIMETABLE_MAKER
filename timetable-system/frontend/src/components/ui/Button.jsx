@@ -3,21 +3,21 @@ import { cn } from '../../utils/cn';
 import Spinner from './Spinner';
 
 const variants = {
-  primary: 'bg-gradient-to-r from-[#6C63FF] to-[#00D4FF] text-white shadow-lg shadow-[#6C63FF]/30 hover:shadow-[#6C63FF]/50 active:scale-[0.98]',
-  secondary: 'bg-[#F1F5F9] dark:bg-white/10 border border-[#CBD5E1] dark:border-white/10 text-[#0F172A] dark:text-white hover:bg-[#E2E8F0] dark:hover:bg-white/15 active:scale-[0.98]',
-  outline: 'border border-[#CBD5E1] dark:border-white/20 text-[#0F172A] dark:text-white bg-white dark:bg-transparent hover:bg-[#F1F5F9] dark:hover:bg-white/5 active:scale-[0.98]',
-  danger: 'bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-lg shadow-rose-600/30 active:scale-[0.98]',
-  success: 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/30 active:scale-[0.98]',
-  ghost: 'text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 active:scale-[0.98]',
-  link: 'text-blue-600 dark:text-cyan-400 hover:underline p-0 h-auto font-bold',
+  primary: 'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-hover)] active:scale-[0.98]',
+  secondary: 'bg-[var(--bg-surface-alt)] border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] active:scale-[0.98]',
+  outline: 'border border-[var(--border-strong)] text-[var(--text-primary)] bg-transparent hover:bg-[var(--text-primary)] hover:text-[var(--bg-surface)] active:scale-[0.98]',
+  danger: 'bg-[var(--error)] text-white hover:opacity-90 active:scale-[0.98]',
+  success: 'bg-[var(--success)] text-white hover:opacity-90 active:scale-[0.98]',
+  ghost: 'bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] active:scale-[0.98]',
+  link: 'text-[var(--accent)] hover:underline p-0 h-auto font-medium',
 };
 
 const sizes = {
-  xs: 'px-3 py-1 text-xs rounded-xl font-bold',
-  sm: 'px-4 py-1.5 text-xs rounded-xl font-extrabold tracking-wide',
-  md: 'px-5 py-2.5 text-sm rounded-2xl font-extrabold tracking-wide',
-  lg: 'px-7 py-3.5 text-base rounded-2xl font-extrabold tracking-wide',
-  xl: 'px-9 py-4 text-base rounded-full font-black tracking-widest uppercase',
+  xs: 'px-3 py-1 text-xs rounded-sm font-medium',
+  sm: 'px-4 py-1.5 text-xs rounded-sm font-medium tracking-wide',
+  md: 'px-6 py-2.5 text-sm rounded-sm font-medium tracking-wide',
+  lg: 'px-8 py-3 text-base rounded-sm font-medium tracking-wide',
+  xl: 'px-9 py-4 text-base rounded-sm font-bold tracking-wider uppercase',
 };
 
 const Button = forwardRef(
@@ -45,9 +45,9 @@ const Button = forwardRef(
         type={type}
         disabled={isDisabled}
         className={cn(
-          'inline-flex items-center justify-center gap-2 font-display tracking-tight',
-          'transition-all duration-200 ease-out cursor-pointer',
-          'focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/50 focus:ring-offset-2 dark:focus:ring-offset-[#0A0A0F]',
+          'inline-flex items-center justify-center gap-2 font-sans tracking-tight select-none',
+          'transition-all duration-150 ease-out cursor-pointer',
+          'focus:outline-none focus:ring-1 focus:ring-[var(--accent)]',
           'disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none',
           variants[variant],
           sizes[size],

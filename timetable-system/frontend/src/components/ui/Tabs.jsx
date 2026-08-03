@@ -4,13 +4,17 @@ import { cn } from '../../utils/cn';
 const Tabs = ({
   tabs,
   defaultTab,
+  activeTab: controlledActiveTab,
   onChange,
   className,
 }) => {
-  const [activeTab, setActiveTab] = useState(defaultTab || tabs[0]?.key);
+  const [internalActiveTab, setInternalActiveTab] = useState(defaultTab || tabs[0]?.key);
+  const activeTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveTab;
 
   const handleTabClick = (key) => {
-    setActiveTab(key);
+    if (controlledActiveTab === undefined) {
+      setInternalActiveTab(key);
+    }
     onChange?.(key);
   };
 
@@ -19,31 +23,24 @@ const Tabs = ({
   return (
     <div className={className}>
       {/* Tab headers */}
-      <div className="border-b border-slate-200 dark:border-slate-800">
-        <nav className="flex gap-6" aria-label="Tabs">
+      <div className="border-b border-[var(--border)] font-sans">
+        <nav className="flex gap-6 overflow-x-auto" aria-label="Tabs">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => handleTabClick(tab.key)}
               className={cn(
-                'py-3 text-sm font-bold border-b-2 -mb-px transition-colors cursor-pointer',
+                'py-3 text-xs font-sans font-semibold border-b-2 -mb-px transition-colors cursor-pointer shrink-0',
                 activeTab === tab.key
-                  ? 'border-blue-500 text-blue-600 dark:text-cyan-400 font-black'
-                  : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
+                  ? 'border-[var(--accent)] text-[var(--accent)] font-bold'
+                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)]'
               )}
             >
               <span className="flex items-center gap-2">
-                {tab.icon && <tab.icon className="w-4 h-4" />}
+                {tab.icon && <tab.icon className="w-4 h-4 text-[var(--accent)]" strokeWidth={1.5} />}
                 {tab.label}
                 {tab.badge !== undefined && (
-                  <span
-                    className={cn(
-                      'ml-1 px-1.5 py-0.5 text-xs font-bold rounded-full',
-                      activeTab === tab.key
-                        ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                    )}
-                  >
+                  <span className="ml-1 px-1.5 py-0.5 text-[10px] font-mono rounded-full bg-[var(--accent-soft)] text-[var(--accent)]">
                     {tab.badge}
                   </span>
                 )}
@@ -54,7 +51,7 @@ const Tabs = ({
       </div>
 
       {/* Tab content */}
-      <div className="pt-4">{activeContent}</div>
+      <div className="pt-4 transition-all duration-300">{activeContent}</div>
     </div>
   );
 };

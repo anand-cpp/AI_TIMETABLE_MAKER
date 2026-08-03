@@ -1,45 +1,55 @@
 import { GraduationCap, Pencil, Trash2, BookOpen } from 'lucide-react';
 import Table from '../ui/Table';
-import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import Tooltip from '../ui/Tooltip';
+import { getPaletteForIndex } from '../../utils/palette';
+import { useTheme } from '../../context/ThemeContext';
 
 const ClassList = ({ classes, loading, onEdit, onDelete }) => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const columns = [
     {
       key: 'name',
       title: 'Class',
-      render: (_, row) => (
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center shrink-0">
-            <GraduationCap className="w-4 h-4 text-green-600" />
+      render: (_, row, index) => {
+        const paletteStyle = getPaletteForIndex(index, isDark);
+        return (
+          <div className="flex items-center gap-3">
+            <div
+              style={paletteStyle}
+              className="w-8 h-8 rounded-sm flex items-center justify-center shrink-0 border"
+            >
+              <GraduationCap className="w-4 h-4" strokeWidth={1.5} />
+            </div>
+            <div>
+              <p className="font-serif font-normal text-base text-[var(--text-primary)]">
+                {row.departmentId?.code || '—'} — Sem {row.semester}{' '}
+                <span className="text-[var(--accent)] font-sans font-medium">Sec {row.section}</span>
+              </p>
+              <p className="text-xs font-sans text-[var(--text-secondary)]">
+                {row.departmentId?.name || '—'}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="font-bold text-slate-900 dark:text-white">
-              {row.departmentId?.code || '—'} — Sem {row.semester}{' '}
-              <span className="text-blue-600 dark:text-cyan-400 font-bold">Sec {row.section}</span>
-            </p>
-            <p className="text-xs text-slate-500 dark:text-slate-300">
-              {row.departmentId?.name || '—'}
-            </p>
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       key: 'strength',
       title: 'Strength',
       render: (val) => (
-        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{val || 60} students</span>
+        <span className="text-xs font-sans text-[var(--text-primary)]">{val || 60} students</span>
       ),
     },
     {
       key: 'subjects',
       title: 'Subjects',
       render: (val) => (
-        <div className="flex items-center gap-1.5">
-          <BookOpen className="w-3.5 h-3.5 text-blue-500" />
-          <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+        <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
+          <BookOpen className="w-3.5 h-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+          <span className="text-xs font-sans">
             {val?.length || 0} subjects
           </span>
         </div>
@@ -51,13 +61,13 @@ const ClassList = ({ classes, loading, onEdit, onDelete }) => {
       render: (val, row) =>
         val ? (
           <div>
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{val}</p>
+            <p className="text-xs font-sans font-medium text-[var(--text-primary)]">{val}</p>
             {row.classRepEmail && (
-              <p className="text-xs text-slate-400 dark:text-slate-400">{row.classRepEmail}</p>
+              <p className="text-xs font-sans text-[var(--text-muted)]">{row.classRepEmail}</p>
             )}
           </div>
         ) : (
-          <span className="text-slate-400 text-sm">—</span>
+          <span className="text-[var(--text-muted)] text-xs">—</span>
         ),
     },
     {
@@ -71,7 +81,7 @@ const ClassList = ({ classes, loading, onEdit, onDelete }) => {
               variant="ghost"
               size="sm"
               onClick={() => onEdit(row)}
-              leftIcon={<Pencil className="w-3.5 h-3.5" />}
+              leftIcon={<Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />}
             >
               Edit
             </Button>
@@ -81,8 +91,8 @@ const ClassList = ({ classes, loading, onEdit, onDelete }) => {
               variant="ghost"
               size="sm"
               onClick={() => onDelete(row)}
-              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              className="text-[var(--error)] hover:bg-[var(--bg-hover)]"
+              leftIcon={<Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />}
             >
               Delete
             </Button>

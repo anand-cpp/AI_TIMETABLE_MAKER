@@ -11,19 +11,19 @@ const EmptyState = ({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center p-8 sm:p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs',
+        'flex flex-col items-center justify-center p-10 text-center bg-[var(--bg-surface-alt)] rounded-md border border-dashed border-[var(--border)]',
         className
       )}
     >
-      <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-center mb-4 shadow-inner">
-        <Icon className="w-7 h-7 text-slate-400 dark:text-slate-500" />
+      <div className="w-10 h-10 rounded-md bg-[var(--bg-surface)] border border-[var(--border)] flex items-center justify-center mb-4 text-[var(--text-muted)]">
+        <Icon className="w-5 h-5" strokeWidth={1.5} />
       </div>
       {title && (
-        <h3 className="text-base font-display font-extrabold text-slate-900 dark:text-white mb-1 tracking-tight">
+        <h3 className="font-serif italic text-xl font-normal text-[var(--text-primary)] mb-1">
           {title}
         </h3>
       )}
-      <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-6 max-w-sm leading-relaxed">
+      <p className="font-sans text-xs text-[var(--text-secondary)] mb-6 max-w-sm leading-relaxed">
         {message}
       </p>
       {action && <div className="mt-1">{action}</div>}

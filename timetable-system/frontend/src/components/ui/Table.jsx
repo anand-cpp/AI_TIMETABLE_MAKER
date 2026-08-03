@@ -16,7 +16,7 @@ const Table = ({
 }) => {
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 glass-panel rounded-3xl">
+      <div className="flex items-center justify-center py-16 bg-[var(--bg-surface)] border border-[var(--border)] rounded-md">
         <Spinner size="lg" />
       </div>
     );
@@ -27,15 +27,15 @@ const Table = ({
   }
 
   return (
-    <div className={cn('overflow-x-auto rounded-3xl glass-panel shadow-xl', className)}>
-      <table className="min-w-full divide-y divide-[#CBD5E1] dark:divide-white/10">
-        <thead className="bg-[#F1F5F9] dark:bg-white/5 border-b border-[#CBD5E1] dark:border-white/10">
+    <div className={cn('overflow-x-auto rounded-md bg-[var(--bg-surface)] border border-[var(--border)]', className)}>
+      <table className="min-w-full divide-y divide-[var(--border)]">
+        <thead className="bg-[var(--bg-surface-alt)] border-b border-[var(--border)]">
           <tr>
             {columns.map((col, idx) => (
               <th
                 key={col.key || idx}
                 className={cn(
-                  'px-6 py-4 text-left text-xs font-black text-[#6C63FF] dark:text-[#00D4FF] uppercase tracking-widest font-display',
+                  'px-4 py-3 text-left text-[11px] font-sans font-semibold text-[var(--text-muted)] uppercase tracking-widest',
                   col.headerClassName
                 )}
                 style={col.width ? { width: col.width } : undefined}
@@ -45,22 +45,22 @@ const Table = ({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-[#E2E8F0] dark:divide-white/5 text-[#0F172A] dark:text-white">
+        <tbody className="divide-y divide-[var(--border)] text-[var(--text-primary)] font-sans text-sm">
           {data.map((row, rowIdx) => (
             <tr
               key={row[rowKey] || rowIdx}
               onClick={() => onRowClick?.(row)}
               className={cn(
                 'transition-colors duration-150',
-                striped && rowIdx % 2 === 1 && 'bg-slate-50 dark:bg-white/[0.02]',
-                hoverable && 'hover:bg-slate-100/80 dark:hover:bg-white/5',
+                striped && rowIdx % 2 === 1 && 'bg-[var(--bg-surface-alt)]',
+                hoverable && 'hover:bg-[var(--bg-hover)]',
                 onRowClick && 'cursor-pointer'
               )}
             >
               {columns.map((col, colIdx) => (
                 <td
                   key={col.key || colIdx}
-                  className={cn('px-6 py-4 text-sm font-bold text-[#0F172A] dark:text-white', col.cellClassName)}
+                  className={cn('px-4 py-3 text-sm font-sans font-normal text-[var(--text-primary)]', col.cellClassName)}
                 >
                   {col.render ? col.render(row[col.key], row, rowIdx) : row[col.key]}
                 </td>

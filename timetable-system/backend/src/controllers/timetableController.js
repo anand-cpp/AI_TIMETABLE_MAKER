@@ -118,8 +118,8 @@ const generateTimetable = async (req, res) => {
     const lastVersion = await Timetable.findOne().sort({ version: -1 }).select('version');
     const nextVersion = lastVersion ? lastVersion.version + 1 : 1;
 
-    // Run engine orchestrator
-    const result = await orchestrator.run();
+    // Run engine orchestrator with options (departmentId, year, semester, section, teacherAvailability, etc.)
+    const result = await orchestrator.run(req.body);
 
     if (!result.success) {
       return sendError(res, 400, result.error || 'Timetable generation failed');
@@ -581,6 +581,124 @@ const updateVersionLabel = async (req, res) => {
   }
 };
 
+// ─── GET Cross-Department Teachers for a Department ───────────────────────────
+// GET /api/timetable/cross-dept-teachers/:departmentId
+const getCrossDeptTeachers = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+    if (!departmentId) return sendError(res, 400, 'Department ID is required');
+
+    const Subject = require('../models/Subject');
+    const Department = require('../models/Department');
+    const TeacherAvailability = require('../models/TeacherAvailability');
+
+    // Find all classes in this department
+    const classes = await Class.find({ departmentId }).select('_id name semester section');
+    const classIds = classes.map((c) => c._id);
+
+    // Find all subjects for these classes
+    const subjects = await Subject.find({ classId: { $in: classIds } })
+      .populate('teachers', 'name username departmentId unavailability')
+      .populate('labDetails.batch1Teacher', 'name username departmentId unavailability')
+      .populate('labDetails.batch2Teacher', 'name username departmentId unavailability')
+      .populate('classId', 'semester section')
+      .lean();
+
+    const teacherMap = {};
+    for (const sub of subjects) {
+      const allTeachers = [
+        ...(sub.teachers || []),
+        ...(sub.labDetails?.batch1Teacher ? [sub.labDetails.batch1Teacher] : []),
+        ...(sub.labDetails?.batch2Teacher ? [sub.labDetails.batch2Teacher] : []),
+      ];
+
+      for (const t of allTeachers) {
+        if (!t || !t._id) continue;
+        const tDeptId = t.departmentId?._id ? t.departmentId._id.toString() : t.departmentId?.toString();
+        if (tDeptId && tDeptId !== departmentId.toString()) {
+          const key = t._id.toString();
+          if (!teacherMap[key]) {
+            teacherMap[key] = {
+              _id: t._id,
+              name: t.name,
+              username: t.username,
+              homeDepartmentId: tDeptId,
+              unavailability: t.unavailability || [],
+              subjects: [],
+            };
+          }
+          teacherMap[key].subjects.push({
+            name: sub.name,
+            code: sub.code,
+            classInfo: `Sem ${sub.classId?.semester} Sec ${sub.classId?.section}`,
+          });
+        }
+      }
+    }
+
+    const crossDeptTeachers = Object.values(teacherMap);
+    const publishedTimetable = await Timetable.findOne({ isAccepted: true }).lean();
+
+    for (const t of crossDeptTeachers) {
+      if (t.homeDepartmentId) {
+        const homeDept = await Department.findById(t.homeDepartmentId).select('name code').lean();
+        t.homeDepartmentName = homeDept ? homeDept.name : 'Other Department';
+        t.homeDepartmentCode = homeDept ? homeDept.code : '';
+      }
+
+      const savedAvail = await TeacherAvailability.findOne({ teacherId: t._id, departmentId }).lean();
+      if (savedAvail && savedAvail.unavailability) {
+        t.savedUnavailability = savedAvail.unavailability;
+        t.savedSource = savedAvail.source;
+      }
+
+      const publishedBusySlots = [];
+      if (publishedTimetable) {
+        for (const classTT of publishedTimetable.classTimetables) {
+          for (const slot of classTT.slots) {
+            if (slot.isBreak) continue;
+            const isInSlot =
+              (slot.teacherIds && slot.teacherIds.some((id) => id.toString() === t._id.toString())) ||
+              (slot.isBatchSplit &&
+                ((slot.batch1?.teacherId && slot.batch1.teacherId.toString() === t._id.toString()) ||
+                  (slot.batch2?.teacherId && slot.batch2.teacherId.toString() === t._id.toString())));
+            if (isInSlot) {
+              publishedBusySlots.push({ day: slot.day, period: slot.period });
+            }
+          }
+        }
+      }
+      t.publishedBusySlots = publishedBusySlots;
+    }
+
+    return sendSuccess(res, 200, { crossDeptTeachers });
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
+// ─── SAVE Teacher Availability for Department ───────────────────────────
+// POST /api/timetable/teacher-availability
+const saveTeacherAvailability = async (req, res) => {
+  try {
+    const { teacherId, departmentId, unavailability, source } = req.body;
+    if (!teacherId || !departmentId) {
+      return sendError(res, 400, 'teacherId and departmentId are required');
+    }
+
+    const TeacherAvailability = require('../models/TeacherAvailability');
+    const record = await TeacherAvailability.findOneAndUpdate(
+      { teacherId, departmentId },
+      { unavailability, source: source || 'manual' },
+      { upsert: true, new: true }
+    );
+
+    return sendSuccess(res, 200, { record }, 'Teacher availability saved successfully');
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
 module.exports = {
   getVersions,
   getVersion,
@@ -597,4 +715,6 @@ module.exports = {
   editUnlockSlot,
   getEditHistory,
   updateVersionLabel,
+  getCrossDeptTeachers,
+  saveTeacherAvailability,
 };

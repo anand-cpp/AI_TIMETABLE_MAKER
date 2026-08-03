@@ -22,37 +22,36 @@ const StudentTimetableGrid = ({ slots }) => {
 
   if (!slots || slots.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-400 text-sm">
+      <div className="text-center py-8 text-[var(--text-muted)] text-sm font-sans">
         No timetable data available
       </div>
     );
   }
 
   const getCellStyle = (slot) => {
-    if (!slot || slot.isEmpty) return 'bg-white dark:bg-slate-900/60';
-    if (slot.isBreak) return 'bg-slate-100 dark:bg-slate-800';
-    if (slot.subjectType === 'lab') return 'bg-blue-50/90 dark:bg-blue-950/60 border-l-2 border-l-blue-500';
-    if (slot.subjectType === 'elective') return 'bg-emerald-50/90 dark:bg-emerald-950/60 border-l-2 border-l-emerald-500';
-    return 'bg-white dark:bg-slate-900/90';
+    if (!slot || slot.isEmpty) return 'bg-[var(--bg-surface)]';
+    if (slot.isBreak) return 'bg-[var(--bg-surface-alt)]';
+    if (slot.subjectType === 'lab') return 'bg-[var(--accent-soft)]/60 border-l-[3px] border-l-[var(--accent)]';
+    if (slot.subjectType === 'elective') return 'bg-[var(--accent-soft)] border-l-[3px] border-l-[var(--accent)]';
+    return 'bg-[var(--bg-surface)]';
   };
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full border-collapse text-sm font-sans">
         <thead>
-          <tr className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-            <th className="px-4 py-3 text-left font-black w-24 rounded-tl-xl uppercase tracking-wider text-xs">
+          <tr className="bg-[var(--bg-surface-alt)] text-[var(--text-muted)] border-b border-[var(--border)]">
+            <th className="px-4 py-3 text-left font-sans font-semibold text-[11px] uppercase tracking-widest w-24">
               Day
             </th>
-            {periods.map((period, idx) => {
+            {periods.map((period) => {
               const isBreak = DAYS.some((day) => slotMap[day]?.[period]?.isBreak);
               return (
                 <th
                   key={period}
                   className={cn(
-                    'px-3 py-3 text-center font-black min-w-[100px] uppercase tracking-wider text-xs',
-                    isBreak && 'bg-indigo-900/80 text-cyan-200',
-                    idx === periods.length - 1 && 'rounded-tr-xl'
+                    'px-3 py-3 text-center font-sans font-semibold text-[11px] uppercase tracking-widest min-w-[100px]',
+                    isBreak && 'bg-[var(--bg-surface-alt)] text-[var(--text-muted)]'
                   )}
                 >
                   {isBreak ? '—' : `P${period}`}
@@ -61,13 +60,13 @@ const StudentTimetableGrid = ({ slots }) => {
             })}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-[var(--border)]">
           {DAYS.map((day, dayIdx) => (
             <tr
               key={day}
-              className={dayIdx % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50/50 dark:bg-slate-900/80'}
+              className={dayIdx % 2 === 0 ? 'bg-[var(--bg-surface)]' : 'bg-[var(--bg-surface-alt)]/30'}
             >
-              <td className="px-4 py-3 font-black text-slate-800 dark:text-white border border-slate-200 dark:border-slate-800 text-xs">
+              <td className="px-4 py-3 font-sans font-semibold text-xs text-[var(--text-primary)] border border-[var(--border)]">
                 <span className="hidden sm:block">{day}</span>
                 <span className="block sm:hidden">{dayShort(day)}</span>
               </td>
@@ -78,7 +77,7 @@ const StudentTimetableGrid = ({ slots }) => {
                   return (
                     <td
                       key={period}
-                      className="border border-slate-200 dark:border-slate-800 p-2 min-h-[70px]"
+                      className="border border-[var(--border)] p-2 min-h-[70px]"
                     />
                   );
                 }
@@ -87,9 +86,9 @@ const StudentTimetableGrid = ({ slots }) => {
                   return (
                     <td
                       key={period}
-                      className="border border-slate-200 dark:border-slate-800 p-2 bg-slate-100 dark:bg-slate-800 text-center"
+                      className="border border-[var(--border)] p-2 bg-[var(--bg-surface-alt)] text-center"
                     >
-                      <span className="text-xs text-slate-400 dark:text-slate-400 italic">
+                      <span className="text-xs text-[var(--text-muted)] font-serif italic">
                         {slot.subjectName || 'Break'}
                       </span>
                     </td>
@@ -100,31 +99,31 @@ const StudentTimetableGrid = ({ slots }) => {
                   <td
                     key={period}
                     className={cn(
-                      'border border-slate-200 dark:border-slate-800 p-2.5 min-h-[70px] align-top',
+                      'border border-[var(--border)] p-2.5 min-h-[70px] align-top transition-colors',
                       getCellStyle(slot)
                     )}
                   >
                     <div>
-                      <p className="font-bold text-xs text-slate-900 dark:text-white leading-tight">
+                      <p className="font-sans font-semibold text-xs text-[var(--text-primary)] leading-tight">
                         {slot.subjectName}
                       </p>
                       {slot.subjectCode && (
-                        <p className="text-xs font-mono text-slate-500 dark:text-slate-300 font-bold mt-0.5">
+                        <p className="text-xs font-mono text-[var(--text-secondary)] mt-0.5">
                           {slot.subjectCode}
                         </p>
                       )}
                       {slot.teacherNames?.length > 0 && (
-                        <p className="text-xs font-semibold text-slate-600 dark:text-slate-200 mt-1 truncate">
+                        <p className="text-xs font-sans text-[var(--text-secondary)] mt-1 truncate">
                           {slot.teacherNames.join(', ')}
                         </p>
                       )}
                       {slot.isBatchSplit && (
-                        <p className="text-xs font-bold text-blue-600 dark:text-cyan-400 mt-0.5">
+                        <p className="text-[11px] font-sans font-semibold text-[var(--accent)] mt-0.5">
                           Batch Split
                         </p>
                       )}
                       {slot.roomName && (
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-300 mt-0.5">
+                        <p className="text-xs font-sans text-[var(--text-muted)] mt-0.5">
                           📍 {slot.roomName}
                         </p>
                       )}

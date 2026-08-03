@@ -7,9 +7,9 @@ const { getTeachingPeriods } = require('../../utils/timeHelpers');
 
 /**
  * Loads all data needed for timetable generation from DB
- * Returns a structured data object used by all engine modules
+ * Supports filtering options (departmentId, year, semester, section, teacherAvailability)
  */
-const loadData = async () => {
+const loadData = async (options = {}) => {
   // ── Load settings ──────────────────────────────────────────────────────────
   let settings = await CollegeSettings.findOne({ singleton: 'singleton' });
   if (!settings) {
@@ -18,54 +18,92 @@ const loadData = async () => {
     settings = settings.toObject();
   }
 
+  // ── Build class filter query ──────────────────────────────────────────────
+  const classQuery = {};
+  if (options.departmentId) {
+    classQuery.departmentId = options.departmentId;
+  }
+  if (options.semester) {
+    classQuery.semester = Number(options.semester);
+  } else if (options.year) {
+    const yearNum = Number(options.year);
+    const startSem = (yearNum - 1) * 2 + 1;
+    const endSem = yearNum * 2;
+    classQuery.semester = { $gte: startSem, $lte: endSem };
+  }
+  if (options.section) {
+    classQuery.section = options.section;
+  }
+
   // ── Load classes ───────────────────────────────────────────────────────────
-  const classes = await Class.find()
+  let classes = await Class.find(classQuery)
     .populate('departmentId', 'name code building floor travelOptimization')
     .lean();
 
   if (!classes || classes.length === 0) {
-    throw new Error('No classes found. Add classes before generating a timetable.');
+    throw new Error('No classes found matching the selected generation criteria.');
   }
 
-  // ── Load subjects ──────────────────────────────────────────────────────────
-  const subjects = await Subject.find()
-    .populate('teachers', 'name username unavailability morningLabPreference maxPeriodsPerDay')
-    .populate('labDetails.batch1Teacher', 'name username unavailability')
-    .populate('labDetails.batch2Teacher', 'name username unavailability')
+  const classIds = classes.map((c) => c._id);
+
+  // ── Load subjects for filtered classes ─────────────────────────────────────
+  let subjects = await Subject.find({ classId: { $in: classIds } })
+    .populate('teachers', 'name username unavailability morningLabPreference maxPeriodsPerDay departmentId')
+    .populate('labDetails.batch1Teacher', 'name username unavailability departmentId')
+    .populate('labDetails.batch2Teacher', 'name username unavailability departmentId')
     .populate('electiveDetails.linkedClasses', 'semester section departmentId')
     .populate('electiveDetails.participatingClasses', 'semester section departmentId')
     .lean();
 
   if (!subjects || subjects.length === 0) {
-    throw new Error('No subjects found. Add subjects before generating a timetable.');
+    throw new Error('No subjects found for the selected classes.');
   }
 
   // ── Load teachers ──────────────────────────────────────────────────────────
-  const teachers = await Teacher.find({ isActive: true })
+  let teachers = await Teacher.find({ isActive: true })
     .select('-password')
     .lean();
 
-  // ── Build helper maps ──────────────────────────────────────────────────────
+  // ── Merge custom teacherAvailability constraints if provided ────────────────
+  if (options.teacherAvailability && Array.isArray(options.teacherAvailability)) {
+    const customUnavailMap = {};
+    for (const item of options.teacherAvailability) {
+      const tId = item.teacherId || item.teacher_id;
+      if (!tId) continue;
+      customUnavailMap[tId.toString()] = item.unavailability || [];
+    }
 
-  // classId -> class object
+    for (const t of teachers) {
+      const extraUnavail = customUnavailMap[t._id.toString()];
+      if (extraUnavail && Array.isArray(extraUnavail)) {
+        const existing = new Set(t.unavailability.map((u) => `${u.day}_${u.period}`));
+        for (const slot of extraUnavail) {
+          const key = `${slot.day}_${slot.period}`;
+          if (!existing.has(key)) {
+            existing.add(key);
+            t.unavailability.push({ day: slot.day, period: Number(slot.period) });
+          }
+        }
+      }
+    }
+  }
+
+  // ── Build helper maps ──────────────────────────────────────────────────────
   const classMap = {};
   for (const cls of classes) {
     classMap[cls._id.toString()] = cls;
   }
 
-  // subjectId -> subject object
   const subjectMap = {};
   for (const sub of subjects) {
     subjectMap[sub._id.toString()] = sub;
   }
 
-  // teacherId -> teacher object
   const teacherMap = {};
   for (const t of teachers) {
     teacherMap[t._id.toString()] = t;
   }
 
-  // classId -> [subjects]
   const subjectsByClass = {};
   for (const cls of classes) {
     subjectsByClass[cls._id.toString()] = subjects.filter(
@@ -80,14 +118,11 @@ const loadData = async () => {
       ? settings.fridayTimeline
       : timeline;
 
-  // Teaching periods (non-break) per day
   const teachingPeriods = getTeachingPeriods(timeline);
   const fridayTeachingPeriods = getTeachingPeriods(fridayTimeline);
 
-  // All working days
   const workingDays = settings.workingDays || DEFAULT_SETTINGS.workingDays;
 
-  // Periods per day map (day -> [period numbers that are teaching periods])
   const periodsPerDayMap = {};
   for (const day of workingDays) {
     if (day === 'Friday' && settings.fridaySeparate) {
@@ -97,14 +132,12 @@ const loadData = async () => {
     }
   }
 
-  // All period numbers (including breaks) per day
   const allPeriodsPerDayMap = {};
   for (const day of workingDays) {
     const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;
     allPeriodsPerDayMap[day] = tl.map((p) => p.periodNumber);
   }
 
-  // Break periods per day
   const breakPeriodsPerDayMap = {};
   for (const day of workingDays) {
     const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;

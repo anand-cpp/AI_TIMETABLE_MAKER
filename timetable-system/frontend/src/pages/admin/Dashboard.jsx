@@ -5,6 +5,7 @@ import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
 import Spinner from '../../components/ui/Spinner';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Breadcrumb from '../../components/ui/Breadcrumb';
 import departmentService from '../../services/departmentService';
 import classService from '../../services/classService';
 import teacherService from '../../services/teacherService';
@@ -22,9 +23,38 @@ import {
   CheckCircle2,
   ArrowRight,
   Sparkles,
-  HelpCircle,
   Layers,
 } from 'lucide-react';
+
+const AnimatedCounter = ({ value }) => {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (!value) {
+      setCount(0);
+      return;
+    }
+    let start = 0;
+    const duration = 800;
+    const stepTime = 30;
+    const steps = Math.max(Math.floor(duration / stepTime), 1);
+    const increment = value / steps;
+
+    const timer = setInterval(() => {
+      start += increment;
+      if (start >= value) {
+        setCount(value);
+        clearInterval(timer);
+      } else {
+        setCount(Math.floor(start));
+      }
+    }, stepTime);
+
+    return () => clearInterval(timer);
+  }, [value]);
+
+  return <span>{count}</span>;
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -106,6 +136,26 @@ const Dashboard = () => {
     );
   }
 
+  // Calculate setup progress percentage
+  const completedSteps = [
+    stats.departments > 0,
+    stats.classes > 0,
+    stats.teachers > 0,
+    stats.subjects > 0,
+  ].filter(Boolean).length;
+  const progressPercent = Math.round((completedSteps / 4) * 100);
+
+  const nextStepUrl =
+    stats.departments === 0
+      ? '/admin/departments'
+      : stats.classes === 0
+      ? '/admin/classes'
+      : stats.teachers === 0
+      ? '/admin/teachers'
+      : stats.subjects === 0
+      ? '/admin/subjects'
+      : '/admin/timetable';
+
   const steps = [
     {
       step: 1,
@@ -115,8 +165,6 @@ const Dashboard = () => {
       description: 'Add college departments (e.g. Computer Science, Electronics)',
       icon: Building2,
       to: '/admin/departments',
-      color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800',
-      btnColor: 'from-blue-600 to-indigo-600',
       done: stats.departments > 0,
     },
     {
@@ -127,8 +175,6 @@ const Dashboard = () => {
       description: 'Add class sections and semesters (e.g. Semester 5 - Section A)',
       icon: GraduationCap,
       to: '/admin/classes',
-      color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
-      btnColor: 'from-emerald-600 to-teal-600',
       done: stats.classes > 0,
     },
     {
@@ -139,8 +185,6 @@ const Dashboard = () => {
       description: 'Add teacher profiles & workload limits',
       icon: Users,
       to: '/admin/teachers',
-      color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800',
-      btnColor: 'from-purple-600 to-violet-600',
       done: stats.teachers > 0,
     },
     {
@@ -151,124 +195,205 @@ const Dashboard = () => {
       description: 'Add subjects, weekly hours, and assign faculty members',
       icon: BookOpen,
       to: '/admin/subjects',
-      color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800',
-      btnColor: 'from-amber-600 to-orange-600',
       done: stats.subjects > 0,
     },
   ];
 
-  const canGenerate = stats.departments > 0 && stats.classes > 0 && stats.teachers > 0 && stats.subjects > 0;
+  const canGenerate = completedSteps === 4;
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+    <div className="space-y-8 max-w-6xl mx-auto pb-12">
+      <Breadcrumb items={[{ label: 'Dashboard' }]} />
+
       <PageHeader
-        title="Admin Control Center"
-        description="Simple 4-step wizard to set up your college schedule and generate AI timetables"
-        action={
-          <Button
-            onClick={() => navigate('/admin/timetable')}
-            leftIcon={<Zap className="w-4 h-4" />}
-          >
-            Generate Timetable
-          </Button>
-        }
+        title="Control Dashboard"
+        description="Simple, guided overview to build and manage your college timetables"
       />
 
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-900/90 via-purple-900/90 to-slate-900 text-white shadow-xl border border-white/10 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-cyan-300 text-xs font-bold uppercase tracking-wider">
-              <Sparkles className="w-4 h-4 text-cyan-400" />
-              Simple Guide
-            </div>
-            <h2 className="text-2xl font-display font-extrabold tracking-tight">
-              How to Create Your Timetable in 4 Steps
-            </h2>
-            <p className="text-slate-300 text-sm font-medium leading-relaxed max-w-2xl">
-              Follow steps 1 to 4 below. Add your Departments, Classes, Teachers, and Subjects — then click <strong>Generate Timetable</strong>!
-            </p>
-          </div>
+      {/* ── TOP HERO SECTION ───────────────────────────────────── */}
+      <div className="bg-[var(--bg-surface)] border border-[var(--border)] border-l-[4px] border-l-[var(--accent)] rounded-md px-8 py-7 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div className="space-y-1.5 max-w-2xl">
+          <span className="text-[11px] font-sans font-semibold uppercase tracking-widest text-[var(--accent)] block">
+            AI TIMETABLE MAKER V2.0
+          </span>
+          <h2 className="font-serif text-3xl sm:text-4xl font-normal text-[var(--text-primary)]">
+            Welcome back, Admin 👋
+          </h2>
+          <p className="font-sans text-sm text-[var(--text-secondary)] leading-relaxed">
+            Let's build your timetable in 4 easy steps. Complete your college setup below or generate your schedules automatically.
+          </p>
+        </div>
 
-          <button
+        <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 w-full md:w-auto">
+          <Button
+            size="md"
+            variant="outline"
+            onClick={() => navigate(nextStepUrl)}
+            leftIcon={<ArrowRight className="w-4 h-4" strokeWidth={1.5} />}
+            className="w-full sm:w-auto justify-center"
+          >
+            {completedSteps < 4 ? 'Continue Setup' : 'Review Setup'}
+          </Button>
+          <Button
+            size="md"
             onClick={() => navigate('/admin/timetable')}
             disabled={!canGenerate}
-            className={`px-6 py-3.5 rounded-2xl font-display font-black text-sm tracking-wide flex items-center gap-2.5 transition-all shrink-0 ${
-              canGenerate
-                ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 shadow-lg shadow-cyan-500/30 hover:scale-105 active:scale-95 cursor-pointer'
-                : 'bg-white/10 text-slate-400 border border-white/10 cursor-not-allowed'
-            }`}
+            leftIcon={<Zap className="w-4 h-4" strokeWidth={1.5} />}
+            className="w-full sm:w-auto justify-center"
           >
-            <span>{canGenerate ? 'Start AI Generator' : 'Add Required Data First'}</span>
-            <ArrowRight className="w-4.5 h-4.5" />
-          </button>
+            Create Timetable Now
+          </Button>
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-2 text-xs font-black uppercase tracking-wider text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <Layers className="w-4 h-4 text-cyan-500" /> Setup Progress Stack (Steps 1 to 4)
+      {/* ── VISUAL PROGRESS OVERVIEW CARD ───────────────────────────────────── */}
+      <div className="bg-[var(--bg-surface-alt)] border border-[var(--border)] rounded-md p-6 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 className="font-serif text-xl font-normal text-[var(--text-primary)]">
+              Setup Progress Checklist
+            </h3>
+            <p className="font-sans text-xs text-[var(--text-secondary)] mt-0.5">
+              {completedSteps === 4
+                ? "You're 100% all set! Ready to generate timetables."
+                : `You're ${progressPercent}% ready to generate timetables!`}
+            </p>
+          </div>
+          <span className="font-mono text-xl font-bold text-[var(--accent)]">
+            {progressPercent}% Complete
           </span>
-          <span>Click Any Step to Manage</span>
         </div>
 
-        {steps.map((item) => (
+        {/* Progress Bar */}
+        <div className="h-2.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-full overflow-hidden">
           <div
-            key={item.step}
-            onClick={() => navigate(item.to)}
-            className="glass-panel p-5 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-blue-500/50 hover:shadow-md transition-all duration-200 cursor-pointer group"
-          >
-            <div className="flex items-center gap-4">
-              <span className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 text-white font-display font-black text-sm flex items-center justify-center shrink-0 border border-slate-700 shadow-sm">
-                #{item.step}
-              </span>
+            className="h-full bg-[var(--accent)] transition-all duration-500 rounded-full"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
 
-              <div className={`p-3 rounded-2xl border ${item.color} shrink-0`}>
-                <item.icon className="w-5 h-5" />
+        {/* 4 Step Badges */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+          {steps.map((s) => (
+            <div
+              key={s.step}
+              onClick={() => navigate(s.to)}
+              className="p-3 rounded-sm bg-[var(--bg-surface)] border border-[var(--border)] flex items-center justify-between cursor-pointer hover:border-[var(--border-strong)] transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <s.icon className={`w-4 h-4 shrink-0 ${s.done ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`} strokeWidth={1.5} />
+                <span className="text-xs font-sans truncate text-[var(--text-primary)]">
+                  {s.step}. {s.title.split(' ')[0]}
+                </span>
               </div>
+              {s.done ? (
+                <span className="text-xs font-semibold text-[var(--accent)] shrink-0">✓</span>
+              ) : (
+                <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0">0</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
 
+      {/* ── QUICK ACTIONS GRID (3 CARDS) ───────────────────────────────────── */}
+      <div className="space-y-3">
+        <p className="text-[11px] font-sans font-semibold uppercase tracking-widest text-[var(--text-label)]">
+          TIMETABLE CREATION PORTALS
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1: Full College Timetable */}
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-6 flex flex-col justify-between space-y-4 hover:border-[var(--border-strong)] transition-colors">
+            <div className="space-y-3">
+              <div className="w-10 h-10 rounded-sm bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border)] flex items-center justify-center">
+                <Zap className="w-5 h-5" strokeWidth={1.5} />
+              </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-display font-extrabold text-lg text-slate-900 dark:text-white group-hover:text-blue-500 transition-colors">
-                    {item.title}
-                  </h3>
-                  {item.done ? (
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase">
-                      ✓ Configured ({item.count})
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase">
-                      Needs Setup (0)
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                  {item.description}
+                <h4 className="font-serif text-xl font-normal text-[var(--text-primary)]">
+                  Quick Timetable
+                </h4>
+                <p className="font-sans text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
+                  Generate a conflict-free timetable for all college departments and classes simultaneously.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800">
-              <div className="text-right px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Items</span>
-                <span className="font-display font-black text-lg text-slate-900 dark:text-white leading-none">{item.count}</span>
-              </div>
+            <Button
+              fullWidth
+              onClick={() => navigate('/admin/timetable')}
+              disabled={!canGenerate}
+              size="sm"
+              leftIcon={<Sparkles className="w-4 h-4" strokeWidth={1.5} />}
+            >
+              Create Full Timetable
+            </Button>
+          </div>
 
-              <div className={`py-2.5 px-4 rounded-xl font-display font-bold text-xs flex items-center gap-2 text-white bg-gradient-to-r ${item.btnColor} shadow-sm group-hover:scale-105 transition-all`}>
-                <span>Manage</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+          {/* Card 2: Department Timetable */}
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-6 flex flex-col justify-between space-y-4 hover:border-[var(--border-strong)] transition-colors">
+            <div className="space-y-3">
+              <div className="w-10 h-10 rounded-sm bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border)] flex items-center justify-center">
+                <Building2 className="w-5 h-5" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h4 className="font-serif text-xl font-normal text-[var(--text-primary)]">
+                  Department Timetable
+                </h4>
+                <p className="font-sans text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
+                  Generate a schedule for a single department with cross-department teacher availability checks.
+                </p>
               </div>
             </div>
+
+            <Button
+              fullWidth
+              variant="secondary"
+              onClick={() => navigate('/admin/department-timetable')}
+              disabled={stats.departments === 0}
+              size="sm"
+              leftIcon={<Building2 className="w-4 h-4" strokeWidth={1.5} />}
+            >
+              Create Dept Timetable
+            </Button>
           </div>
-        ))}
+
+          {/* Card 3: Year-Wise Timetable */}
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-6 flex flex-col justify-between space-y-4 hover:border-[var(--border-strong)] transition-colors">
+            <div className="space-y-3">
+              <div className="w-10 h-10 rounded-sm bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border)] flex items-center justify-center">
+                <Calendar className="w-5 h-5" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h4 className="font-serif text-xl font-normal text-[var(--text-primary)]">
+                  Year-Wise Timetable
+                </h4>
+                <p className="font-sans text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
+                  Generate a granular schedule for a specific academic year, semester, or section.
+                </p>
+              </div>
+            </div>
+
+            <Button
+              fullWidth
+              variant="secondary"
+              onClick={() => navigate('/admin/year-timetable')}
+              disabled={stats.classes === 0}
+              size="sm"
+              leftIcon={<Calendar className="w-4 h-4" strokeWidth={1.5} />}
+            >
+              Create Year-Wise Timetable
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <div className="glass-panel p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
+      {/* Official Published Timetable Section */}
+      <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Calendar className="w-6 h-6 text-emerald-500" />
-            <h3 className="font-display font-extrabold text-lg text-slate-900 dark:text-white">
+            <Calendar className="w-5 h-5 text-[var(--accent)]" strokeWidth={1.5} />
+            <h3 className="font-serif text-xl font-normal text-[var(--text-primary)]">
               Official Published Timetable
             </h3>
           </div>
@@ -282,35 +407,37 @@ const Dashboard = () => {
         </div>
 
         {stats.acceptedTimetable ? (
-          <div className="p-6 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800 flex items-center justify-between flex-wrap gap-4">
+          <div className="p-5 bg-[var(--accent-soft)] rounded-md border border-[var(--border)] flex items-center justify-between flex-wrap gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                <p className="font-display font-bold text-lg text-emerald-950 dark:text-emerald-200">
+                <CheckCircle2 className="w-5 h-5 text-[var(--accent)]" strokeWidth={1.5} />
+                <p className="font-serif text-lg text-[var(--text-primary)]">
                   {stats.acceptedTimetable.label || `Version ${stats.acceptedTimetable.version}`}
                 </p>
               </div>
-              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mt-1">
+              <p className="font-sans text-xs text-[var(--text-secondary)] mt-1">
                 Ready & published for students and faculty
               </p>
             </div>
 
             <div className="text-right">
-              <span className="font-display font-black text-3xl text-emerald-700 dark:text-emerald-300">
+              <span className="font-mono text-3xl font-medium text-[var(--accent)]">
                 {stats.acceptedTimetable.qualityScore?.overall || 98}/100
               </span>
-              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Quality Score</p>
+              <p className="font-sans text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
+                QUALITY SCORE
+              </p>
             </div>
           </div>
         ) : (
-          <div className="text-center py-8 bg-slate-50/50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 space-y-3">
-            <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
-              No official timetable created yet. Follow steps 1 to 4 to generate one!
+          <div className="text-center py-8 bg-[var(--bg-surface-alt)] rounded-md border border-dashed border-[var(--border)] space-y-3">
+            <p className="font-sans text-sm text-[var(--text-secondary)]">
+              No official timetable published yet. Complete setup and click Create Timetable!
             </p>
             <Button
               size="sm"
               onClick={() => navigate('/admin/timetable')}
-              leftIcon={<Zap className="w-4 h-4" />}
+              leftIcon={<Zap className="w-4 h-4" strokeWidth={1.5} />}
             >
               Go to Timetable Builder
             </Button>
@@ -318,28 +445,30 @@ const Dashboard = () => {
         )}
       </div>
 
+      {/* Granular Reset Options */}
       <div className="space-y-4 pt-4">
-        <div className="flex items-center justify-between px-2 text-xs font-black uppercase tracking-wider text-slate-400">
-          <span className="flex items-center gap-1.5 text-amber-500">
-            <Trash2 className="w-4 h-4" /> Granular Reset Options (Safe Management)
+        <div className="flex items-center justify-between px-1 font-sans text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+          <span className="flex items-center gap-2 text-[var(--warning)]">
+            <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+            Granular Reset Options (Safe Management)
           </span>
           <span>Choose exact scope to prevent accidental data loss</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: Timetables Only (Safe Semester Reset) */}
-          <div className="glass-panel p-5 rounded-3xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/30 dark:bg-amber-950/20 flex flex-col justify-between space-y-4">
+          {/* Card 1: Timetables Only */}
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-6 flex flex-col justify-between space-y-4">
             <div className="space-y-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800">
+              <span className="px-2.5 py-0.5 rounded-sm text-[10px] font-sans font-semibold uppercase tracking-widest bg-[var(--bg-surface-alt)] text-[var(--warning)] border border-[var(--border)] inline-block">
                 🟡 Safe Semester Reset
               </span>
-              <h4 className="font-display font-extrabold text-base text-slate-900 dark:text-white">
+              <h4 className="font-serif text-lg font-normal text-[var(--text-primary)]">
                 Clear Timetables Only
               </h4>
-              <p className="text-xs text-slate-600 dark:text-slate-200 leading-relaxed font-semibold">
+              <p className="font-sans text-xs text-[var(--text-secondary)] leading-relaxed">
                 Deletes generated timetable schedules only.
               </p>
-              <div className="p-2.5 rounded-xl bg-amber-100/60 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-[11px] font-bold text-amber-950 dark:text-amber-200">
+              <div className="p-3 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] font-sans text-[11px] font-medium text-[var(--text-secondary)]">
                 ✅ Keeps Departments, Classes, Teachers & Subjects safe!
               </div>
             </div>
@@ -347,26 +476,26 @@ const Dashboard = () => {
             <Button
               variant="secondary"
               onClick={() => setActiveResetType('timetables')}
-              className="w-full justify-center text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-950/50"
-              leftIcon={<Trash2 className="w-4 h-4" />}
+              className="w-full justify-center text-[var(--text-primary)]"
+              leftIcon={<Trash2 className="w-4 h-4" strokeWidth={1.5} />}
             >
               Reset Timetables Only
             </Button>
           </div>
 
-          {/* Card 2: Subjects & Timetables (Curriculum Reset) */}
-          <div className="glass-panel p-5 rounded-3xl border border-orange-200 dark:border-orange-900/50 bg-orange-50/30 dark:bg-orange-950/20 flex flex-col justify-between space-y-4">
+          {/* Card 2: Subjects & Timetables */}
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-6 flex flex-col justify-between space-y-4">
             <div className="space-y-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-orange-100 dark:bg-orange-950 text-orange-900 dark:text-orange-200 border border-orange-200 dark:border-orange-800">
+              <span className="px-2.5 py-0.5 rounded-sm text-[10px] font-sans font-semibold uppercase tracking-widest bg-[var(--bg-surface-alt)] text-[var(--warning)] border border-[var(--border)] inline-block">
                 🟠 Curriculum Reset
               </span>
-              <h4 className="font-display font-extrabold text-base text-slate-900 dark:text-white">
+              <h4 className="font-serif text-lg font-normal text-[var(--text-primary)]">
                 Clear Subjects & Timetables
               </h4>
-              <p className="text-xs text-slate-600 dark:text-slate-200 leading-relaxed font-semibold">
+              <p className="font-sans text-xs text-[var(--text-secondary)] leading-relaxed">
                 Deletes subjects and generated timetables.
               </p>
-              <div className="p-2.5 rounded-xl bg-orange-100/60 dark:bg-orange-950/60 border border-orange-300 dark:border-orange-800 text-[11px] font-bold text-orange-950 dark:text-orange-200">
+              <div className="p-3 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] font-sans text-[11px] font-medium text-[var(--text-secondary)]">
                 ✅ Keeps Departments, Classes & Teachers safe!
               </div>
             </div>
@@ -374,26 +503,26 @@ const Dashboard = () => {
             <Button
               variant="secondary"
               onClick={() => setActiveResetType('subjects')}
-              className="w-full justify-center text-orange-900 dark:text-orange-200 border-orange-300 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-950/50"
-              leftIcon={<Trash2 className="w-4 h-4" />}
+              className="w-full justify-center text-[var(--text-primary)]"
+              leftIcon={<Trash2 className="w-4 h-4" strokeWidth={1.5} />}
             >
               Reset Subjects & Timetables
             </Button>
           </div>
 
-          {/* Card 3: Full System Wipe (Danger Zone) */}
-          <div className="glass-panel p-5 rounded-3xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/30 dark:bg-rose-950/20 flex flex-col justify-between space-y-4">
+          {/* Card 3: Full System Wipe */}
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-6 flex flex-col justify-between space-y-4">
             <div className="space-y-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 dark:bg-rose-950 text-rose-900 dark:text-rose-200 border border-rose-200 dark:border-rose-800">
+              <span className="px-2.5 py-0.5 rounded-sm text-[10px] font-sans font-semibold uppercase tracking-widest bg-[var(--bg-surface-alt)] text-[var(--error)] border border-[var(--border)] inline-block">
                 🔴 Danger Zone
               </span>
-              <h4 className="font-display font-extrabold text-base text-slate-900 dark:text-white">
+              <h4 className="font-serif text-lg font-normal text-[var(--text-primary)]">
                 Delete All System Data
               </h4>
-              <p className="text-xs text-slate-600 dark:text-slate-200 leading-relaxed font-semibold">
+              <p className="font-sans text-xs text-[var(--text-secondary)] leading-relaxed">
                 Complete factory wipe of all data.
               </p>
-              <div className="p-2.5 rounded-xl bg-rose-100/60 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-[11px] font-bold text-rose-950 dark:text-rose-200">
+              <div className="p-3 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] font-sans text-[11px] font-medium text-[var(--error)]">
                 ⚠️ Wipes Departments, Classes, Teachers, Subjects & Timetables.
               </div>
             </div>
@@ -402,7 +531,7 @@ const Dashboard = () => {
               variant="danger"
               onClick={() => setActiveResetType('all')}
               className="w-full justify-center"
-              leftIcon={<Trash2 className="w-4 h-4" />}
+              leftIcon={<Trash2 className="w-4 h-4" strokeWidth={1.5} />}
             >
               Wipe Everything
             </Button>

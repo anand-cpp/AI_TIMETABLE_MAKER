@@ -4,8 +4,8 @@ const Card = ({ children, className, padding = true, hover = true, ...props }) =
   return (
     <div
       className={cn(
-        'glass-panel rounded-3xl p-6 transition-all duration-300',
-        hover && 'hover:-translate-y-1',
+        'bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-6 transition-colors duration-150',
+        hover && 'hover:bg-[var(--bg-hover)] hover:border-[var(--border-strong)]',
         !padding && 'p-0',
         className
       )}
@@ -17,17 +17,17 @@ const Card = ({ children, className, padding = true, hover = true, ...props }) =
 };
 
 const CardHeader = ({ children, className }) => (
-  <div className={cn('mb-4 space-y-1.5', className)}>{children}</div>
+  <div className={cn('mb-4 space-y-1', className)}>{children}</div>
 );
 
 const CardTitle = ({ children, className }) => (
-  <h3 className={cn('text-xl font-display font-black text-[#0F172A] dark:text-white tracking-tight', className)}>
+  <h3 className={cn('text-xl font-serif font-normal text-[var(--text-primary)] tracking-tight', className)}>
     {children}
   </h3>
 );
 
 const CardDescription = ({ children, className }) => (
-  <p className={cn('text-xs font-semibold text-[#334155] dark:text-[#A0A0B0] leading-relaxed', className)}>
+  <p className={cn('text-xs font-sans text-[var(--text-secondary)] leading-relaxed', className)}>
     {children}
   </p>
 );
@@ -37,7 +37,7 @@ const CardContent = ({ children, className }) => (
 );
 
 const CardFooter = ({ children, className }) => (
-  <div className={cn('mt-6 pt-4 border-t border-[#CBD5E1] dark:border-white/10', className)}>
+  <div className={cn('mt-6 pt-4 border-t border-[var(--border)]', className)}>
     {children}
   </div>
 );

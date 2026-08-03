@@ -24,7 +24,7 @@ const TeacherTimetableGrid = ({ slots, periods }) => {
 
   if (!slots || slots.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-400">
+      <div className="text-center py-12 text-[var(--text-muted)] font-sans">
         <p className="text-sm">No classes assigned yet</p>
       </div>
     );
@@ -32,16 +32,16 @@ const TeacherTimetableGrid = ({ slots, periods }) => {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-xs">
+      <table className="w-full border-collapse text-xs font-sans">
         <thead>
-          <tr className="bg-slate-100 dark:bg-slate-800/90">
-            <th className="border border-slate-200 dark:border-slate-700 px-3 py-2.5 text-left text-xs font-black text-slate-800 dark:text-white w-20 uppercase tracking-wider">
+          <tr className="bg-[var(--bg-surface-alt)] text-[var(--text-muted)]">
+            <th className="border border-[var(--border)] px-3 py-2.5 text-left text-[11px] font-sans font-semibold uppercase tracking-widest w-20">
               Day
             </th>
             {allPeriods.map((period) => (
               <th
                 key={period}
-                className="border border-slate-200 dark:border-slate-700 px-2 py-2.5 text-center font-black text-slate-800 dark:text-white min-w-[90px] uppercase tracking-wider"
+                className="border border-[var(--border)] px-2 py-2.5 text-center font-sans font-semibold text-[11px] uppercase tracking-widest min-w-[90px]"
               >
                 P{period}
               </th>
@@ -51,7 +51,7 @@ const TeacherTimetableGrid = ({ slots, periods }) => {
         <tbody>
           {DAYS.map((day) => (
             <tr key={day}>
-              <td className="border border-slate-200 dark:border-slate-700 px-3 py-2 font-black text-slate-800 dark:text-white bg-slate-50 dark:bg-slate-900 text-xs">
+              <td className="border border-[var(--border)] px-3 py-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-surface-alt)]/50">
                 <span className="hidden sm:block">{day}</span>
                 <span className="block sm:hidden">{dayShort(day)}</span>
               </td>
@@ -61,7 +61,7 @@ const TeacherTimetableGrid = ({ slots, periods }) => {
                   return (
                     <td
                       key={period}
-                      className="border border-slate-200 dark:border-slate-800 p-1.5 min-h-[56px] bg-white dark:bg-slate-900/60"
+                      className="border border-[var(--border)] p-1.5 min-h-[56px] bg-[var(--bg-surface)]"
                     />
                   );
                 }
@@ -69,26 +69,26 @@ const TeacherTimetableGrid = ({ slots, periods }) => {
                   <td
                     key={period}
                     className={cn(
-                      'border border-slate-200 dark:border-slate-800 p-1.5 min-h-[56px]',
-                      slot.subjectType === 'lab' && 'bg-blue-50/90 dark:bg-blue-950/60',
-                      slot.subjectType === 'elective' && 'bg-emerald-50/90 dark:bg-emerald-950/60',
-                      slot.subjectType === 'theory' && 'bg-white dark:bg-slate-900/90',
+                      'border border-[var(--border)] p-2 min-h-[56px] transition-colors',
+                      slot.subjectType === 'lab' && 'bg-[var(--accent-soft)]/60 border-l-[3px] border-l-[var(--accent)]',
+                      slot.subjectType === 'elective' && 'bg-[var(--accent-soft)] border-l-[3px] border-l-[var(--accent)]',
+                      slot.subjectType === 'theory' && 'bg-[var(--bg-surface)]',
                     )}
                   >
                     <div>
-                      <p className="font-bold text-xs text-slate-900 dark:text-white leading-tight">
+                      <p className="font-sans font-semibold text-xs text-[var(--text-primary)] leading-tight">
                         {slot.subjectName}
                       </p>
                       {slot.subjectCode && (
-                        <p className="text-xs font-mono text-slate-500 dark:text-slate-300 font-bold">
+                        <p className="text-xs font-mono text-[var(--text-secondary)]">
                           {slot.subjectCode}
                         </p>
                       )}
-                      <p className="text-xs text-blue-600 dark:text-cyan-400 font-black mt-0.5">
+                      <p className="text-xs font-sans font-medium text-[var(--accent)] mt-0.5">
                         {slot.className}
                       </p>
                       {slot.roomName && (
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-300 mt-0.5">📍 {slot.roomName}</p>
+                        <p className="text-xs font-sans text-[var(--text-muted)] mt-0.5">📍 {slot.roomName}</p>
                       )}
                     </div>
                   </td>

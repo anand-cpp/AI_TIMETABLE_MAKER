@@ -17,6 +17,8 @@ const {
   editUnlockSlot,
   getEditHistory,
   updateVersionLabel,
+  getCrossDeptTeachers,
+  saveTeacherAvailability,
 } = require('../controllers/timetableController');
 
 const {
@@ -42,6 +44,8 @@ router.get(
 router.get('/versions', authenticate, requireAdmin, getVersions);
 router.get('/versions/:id', authenticate, requireAdmin, getVersion);
 router.get('/versions/:id/history', authenticate, requireAdmin, getEditHistory);
+router.get('/cross-dept-teachers/:departmentId', authenticate, requireAdmin, getCrossDeptTeachers);
+router.post('/teacher-availability', authenticate, requireAdmin, saveTeacherAvailability);
 
 // Admin only - generate
 router.post('/generate', authenticate, requireAdmin, heavyLimiter, generateTimetable);

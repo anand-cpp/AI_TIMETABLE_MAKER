@@ -4,10 +4,11 @@ import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Breadcrumb from '../../components/ui/Breadcrumb';
 import DepartmentList from '../../components/departments/DepartmentList';
 import DepartmentForm from '../../components/departments/DepartmentForm';
 import departmentService from '../../services/departmentService';
-import { Plus, Building2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 const Departments = () => {
   const [departments, setDepartments] = useState([]);
@@ -81,14 +82,16 @@ const Departments = () => {
   };
 
   return (
-    <div>
+    <div className="space-y-6">
+      <Breadcrumb items={[{ label: 'Setup', to: '/admin/departments' }, { label: 'Departments' }]} />
+
       <PageHeader
         title="Departments"
-        description="Manage college departments and their details"
+        description="Add and manage college academic departments (Step 1 of 4 in setup)"
         action={
           <Button
             onClick={handleOpenCreate}
-            leftIcon={<Plus className="w-4 h-4" />}
+            leftIcon={<Plus className="w-4 h-4" strokeWidth={1.5} />}
           >
             Add Department
           </Button>

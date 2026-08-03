@@ -53,11 +53,11 @@ const Modal = ({
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0A0A0F]/80 backdrop-blur-xl animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-none animate-fade-in"
     >
       <div
         className={cn(
-          'relative w-full glass-panel rounded-3xl shadow-2xl border border-white/10 light:border-slate-200 overflow-hidden',
+          'relative w-full bg-[var(--bg-surface)] rounded-md border border-[var(--border)] overflow-hidden shadow-xl',
           sizes[size],
           className
         )}
@@ -66,32 +66,32 @@ const Modal = ({
       >
         {/* Header */}
         {(title || showClose) && (
-          <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-white/10">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
             {title && (
-              <h2 className="text-xl font-display font-extrabold text-slate-900 dark:text-white tracking-tight">
+              <h2 className="text-xl font-serif font-normal text-[var(--text-primary)] tracking-tight">
                 {title}
               </h2>
             )}
             {showClose && (
               <button
                 onClick={onClose}
-                className="p-2 text-slate-400 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-2xl transition-colors"
+                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-sm transition-colors cursor-pointer"
                 aria-label="Close"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             )}
           </div>
         )}
 
         {/* Body */}
-        <div className="px-6 py-6 max-h-[75vh] overflow-y-auto custom-scrollbar text-slate-900 dark:text-slate-100">
+        <div className="px-6 py-6 max-h-[75vh] overflow-y-auto font-sans text-[var(--text-primary)]">
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div className="px-6 py-4 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900 flex justify-end gap-3">
+          <div className="px-6 py-4 border-t border-[var(--border)] bg-[var(--bg-surface-alt)] flex justify-end gap-3">
             {footer}
           </div>
         )}

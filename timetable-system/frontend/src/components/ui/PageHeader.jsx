@@ -8,14 +8,18 @@ const PageHeader = ({
   className,
 }) => {
   return (
-    <div className={cn('mb-6', className)}>
-      <div className="flex items-start justify-between gap-4">
+    <div className={cn('mb-8', className)}>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           {backButton && <div>{backButton}</div>}
           <div>
-            <h1 className="text-2xl font-display font-extrabold text-slate-900 dark:text-white tracking-tight">{title}</h1>
+            <h1 className="text-3xl sm:text-4xl font-serif font-normal text-[var(--text-primary)] tracking-tight">
+              {title}
+            </h1>
             {description && (
-              <p className="mt-1 text-sm font-medium text-slate-600 dark:text-slate-300">{description}</p>
+              <p className="mt-1 text-sm font-sans font-normal text-[var(--text-secondary)]">
+                {description}
+              </p>
             )}
           </div>
         </div>

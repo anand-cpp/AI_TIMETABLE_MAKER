@@ -1,11 +1,8 @@
 import { useState } from 'react';
-import { cn } from '../../utils/cn';
 import Button from '../ui/Button';
-import Toggle from '../ui/Toggle';
 import {
   Zap,
   AlertTriangle,
-  CheckCircle,
   XCircle,
   ChevronDown,
   ChevronUp,
@@ -31,26 +28,34 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
   };
 
   return (
-    <div className="card p-5">
+    <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-5">
+      {/* Top Header Row */}
       <div className="flex items-center gap-3 mb-5">
-        <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
-          <Zap className="w-5 h-5 text-primary-600" />
+        {/* 44x44px Icon Square in Theme Colors */}
+        <div className="w-[44px] h-[44px] rounded-md bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border)] flex items-center justify-center shrink-0">
+          <Zap className="w-5 h-5 text-[var(--accent)]" strokeWidth={1.5} />
         </div>
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Generate Timetable</h3>
-          <p className="text-xs text-gray-500">AI-powered genetic algorithm engine</p>
+          <h3 className="text-base font-serif font-normal text-[var(--text-primary)] leading-tight">
+            Generate Timetable
+          </h3>
+          <p className="text-xs font-sans text-[var(--text-secondary)] mt-0.5">
+            AI-powered genetic algorithm engine
+          </p>
         </div>
       </div>
 
-      {/* Label */}
-      <div className="mb-4">
-        <label className="form-label">Version Label (optional)</label>
+      {/* Version Label */}
+      <div className="mb-4 space-y-1.5">
+        <label className="block text-[11px] font-sans font-semibold uppercase tracking-widest text-[var(--text-label)]">
+          Version Label (optional)
+        </label>
         <input
           type="text"
           value={options.label}
           onChange={(e) => setOptions((o) => ({ ...o, label: e.target.value }))}
           placeholder="e.g. Week 1 Draft"
-          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full px-3 py-2 text-sm font-sans bg-transparent text-[var(--text-primary)] placeholder-[var(--text-muted)] border border-[var(--border)] rounded-sm focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-colors"
         />
       </div>
 
@@ -58,17 +63,19 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
       <button
         type="button"
         onClick={() => setShowAdvanced((s) => !s)}
-        className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 mb-3 transition-colors"
+        className="flex items-center gap-2 text-xs font-sans text-[var(--text-primary)] hover:text-[var(--accent)] mb-3 transition-colors cursor-pointer"
       >
-        {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-        Advanced Engine Options
+        {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} /> : <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />}
+        <span>Advanced Engine Options</span>
       </button>
 
       {showAdvanced && (
-        <div className="mb-4 p-4 bg-gray-50 rounded-lg space-y-3 border border-gray-200">
+        <div className="mb-4 p-4 bg-[var(--bg-surface-alt)] rounded-sm space-y-3 border border-[var(--border)] font-sans text-xs">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="form-label text-xs">Population Size</label>
+              <label className="block text-[10px] font-sans font-semibold uppercase tracking-wider text-[var(--text-label)] mb-1">
+                Population Size
+              </label>
               <input
                 type="number"
                 min={5}
@@ -77,12 +84,14 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
                 onChange={(e) => setOptions((o) => ({
                   ...o, populationSize: Number(e.target.value)
                 }))}
-                className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-3 py-1.5 text-sm bg-transparent text-[var(--text-primary)] border border-[var(--border)] rounded-sm focus:outline-none focus:border-[var(--accent)]"
               />
-              <p className="form-hint">5-50 (default: 10)</p>
+              <p className="text-[10px] text-[var(--text-muted)] mt-1">5-50 (default: 10)</p>
             </div>
             <div>
-              <label className="form-label text-xs">Max Generations</label>
+              <label className="block text-[10px] font-sans font-semibold uppercase tracking-wider text-[var(--text-label)] mb-1">
+                Max Generations
+              </label>
               <input
                 type="number"
                 min={10}
@@ -91,13 +100,13 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
                 onChange={(e) => setOptions((o) => ({
                   ...o, maxGenerations: Number(e.target.value)
                 }))}
-                className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-3 py-1.5 text-sm bg-transparent text-[var(--text-primary)] border border-[var(--border)] rounded-sm focus:outline-none focus:border-[var(--accent)]"
               />
-              <p className="form-hint">10-200 (default: 50)</p>
+              <p className="text-[10px] text-[var(--text-muted)] mt-1">10-200 (default: 50)</p>
             </div>
           </div>
           <div>
-            <label className="form-label text-xs">
+            <label className="block text-[10px] font-sans font-semibold uppercase tracking-wider text-[var(--text-label)] mb-1">
               Mutation Rate: {(options.mutationRate * 100).toFixed(0)}%
             </label>
             <input
@@ -109,15 +118,15 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
               onChange={(e) => setOptions((o) => ({
                 ...o, mutationRate: Number(e.target.value)
               }))}
-              className="w-full accent-primary-600"
+              className="w-full accent-[var(--accent)]"
             />
-            <div className="flex justify-between text-xs text-gray-400">
+            <div className="flex justify-between text-[10px] text-[var(--text-muted)] mt-1">
               <span>5% (stable)</span>
               <span>50% (exploratory)</span>
             </div>
           </div>
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-xs text-amber-700">
+          <div className="p-3 bg-[var(--bg-surface)] border border-[var(--border)] rounded-sm">
+            <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
               Higher population + more generations = better quality but slower.
               Larger mutation = more exploration but less stable.
             </p>
@@ -130,21 +139,21 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
         onClick={handleGenerate}
         loading={generating}
         size="lg"
-        leftIcon={!generating && <Zap className="w-4 h-4" />}
+        leftIcon={!generating && <Zap className="w-4 h-4" strokeWidth={1.5} />}
         disabled={generating}
       >
         {generating ? 'Generating Timetable...' : 'Generate New Timetable'}
       </Button>
 
       {generating && (
-        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="mt-4 p-4 bg-[var(--accent-soft)] border border-[var(--border)] rounded-sm">
           <div className="flex items-center gap-3">
-            <Loader className="w-4 h-4 text-blue-600 animate-spin" />
+            <Loader className="w-4 h-4 text-[var(--accent)] animate-spin" strokeWidth={1.5} />
             <div>
-              <p className="text-sm font-medium text-blue-900">
+              <p className="text-sm font-sans font-semibold text-[var(--text-primary)]">
                 AI Engine Running...
               </p>
-              <p className="text-xs text-blue-700 mt-0.5">
+              <p className="text-xs font-sans text-[var(--text-secondary)] mt-0.5">
                 Running genetic algorithm. This may take up to 5 minutes for complex setups.
               </p>
             </div>
@@ -156,19 +165,19 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
       {lastResult && !generating && (
         <div className="mt-4 space-y-2">
           {lastResult.warnings?.length > 0 && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="p-3 bg-[var(--bg-surface-alt)] border border-[var(--warning)]/40 rounded-sm">
               <div className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                <AlertTriangle className="w-4 h-4 text-[var(--warning)] mt-0.5 shrink-0" strokeWidth={1.5} />
                 <div>
-                  <p className="text-xs font-semibold text-amber-800">
+                  <p className="text-xs font-sans font-semibold text-[var(--warning)]">
                     {lastResult.warnings.length} Warning(s)
                   </p>
                   <ul className="mt-1 space-y-0.5">
                     {lastResult.warnings.slice(0, 3).map((w, i) => (
-                      <li key={i} className="text-xs text-amber-700">• {w}</li>
+                      <li key={i} className="text-xs font-sans text-[var(--text-secondary)]">• {w}</li>
                     ))}
                     {lastResult.warnings.length > 3 && (
-                      <li className="text-xs text-amber-600">
+                      <li className="text-xs font-sans text-[var(--text-muted)]">
                         + {lastResult.warnings.length - 3} more...
                       </li>
                     )}
@@ -179,15 +188,15 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
           )}
 
           {lastResult.unplacedSubjects?.length > 0 && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="p-3 bg-[var(--bg-surface-alt)] border border-[var(--error)]/40 rounded-sm">
               <div className="flex items-start gap-2">
-                <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                <XCircle className="w-4 h-4 text-[var(--error)] mt-0.5 shrink-0" strokeWidth={1.5} />
                 <div>
-                  <p className="text-xs font-semibold text-red-800">
+                  <p className="text-xs font-sans font-semibold text-[var(--error)]">
                     {lastResult.unplacedSubjects.length} Subject(s) Not Placed
                   </p>
                   {lastResult.unplacedSubjects.slice(0, 3).map((s, i) => (
-                    <p key={i} className="text-xs text-red-700 mt-0.5">
+                    <p key={i} className="text-xs font-sans text-[var(--text-secondary)] mt-0.5">
                       • {s.subjectName}: {s.reason}
                     </p>
                   ))}
@@ -197,25 +206,25 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
           )}
 
           {lastResult.generationStats && (
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="p-3 bg-[var(--bg-surface-alt)] border border-[var(--border)] rounded-sm">
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div>
-                  <p className="text-lg font-bold text-gray-900">
+                  <p className="text-lg font-mono font-medium text-[var(--text-primary)]">
                     {lastResult.generationStats.generations}
                   </p>
-                  <p className="text-xs text-gray-500">Generations</p>
+                  <p className="text-[10px] font-sans text-[var(--text-muted)] uppercase tracking-wider">Generations</p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-gray-900">
+                  <p className="text-lg font-mono font-medium text-[var(--text-primary)]">
                     {(lastResult.generationStats.timeMs / 1000).toFixed(1)}s
                   </p>
-                  <p className="text-xs text-gray-500">Time</p>
+                  <p className="text-[10px] font-sans text-[var(--text-muted)] uppercase tracking-wider">Time</p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-gray-900">
+                  <p className="text-lg font-mono font-medium text-[var(--text-primary)]">
                     {lastResult.generationStats.hardViolations}
                   </p>
-                  <p className="text-xs text-gray-500">Violations</p>
+                  <p className="text-[10px] font-sans text-[var(--text-muted)] uppercase tracking-wider">Violations</p>
                 </div>
               </div>
             </div>

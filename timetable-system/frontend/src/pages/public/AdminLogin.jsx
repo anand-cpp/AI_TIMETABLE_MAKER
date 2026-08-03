@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import LoginForm from '../../components/auth/LoginForm';
-import { GraduationCap, Sparkles, Moon, Sun, ArrowLeft } from 'lucide-react';
+import { GraduationCap, Moon, Sun, ArrowLeft, ShieldCheck } from 'lucide-react';
 
 const AdminLogin = () => {
   const { adminLogin, isAuthenticated, isAdmin } = useAuth();
@@ -34,31 +34,28 @@ const AdminLogin = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0A0A0F] text-[#0F172A] dark:text-white flex flex-col justify-between relative overflow-hidden">
-      {/* Grid background & orbs */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-[#6C63FF]/15 rounded-full blur-3xl pointer-events-none" />
-
+    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-200 flex flex-col justify-between relative overflow-hidden">
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 sm:px-12 py-6 max-w-7xl mx-auto w-full">
-        <Link to="/" className="flex items-center gap-2 text-[#475569] dark:text-[#A0A0B0] hover:text-[#0F172A] dark:hover:text-white transition-colors text-xs font-bold uppercase tracking-wider">
-          <ArrowLeft className="w-4 h-4" /> Back to Home
+      <nav className="relative z-10 flex items-center justify-between px-6 sm:px-10 py-5 max-w-6xl mx-auto w-full border-b border-[var(--border)]">
+        <Link to="/" className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs font-sans font-medium uppercase tracking-wider">
+          <ArrowLeft className="w-4 h-4" strokeWidth={1.5} /> Back to Home
         </Link>
 
         <button
           onClick={toggleTheme}
-          className="p-2.5 rounded-xl bg-white dark:bg-white/10 border border-[#CBD5E1] dark:border-white/10 text-[#0F172A] dark:text-white hover:scale-105 transition-all"
+          className="p-2 rounded-sm bg-transparent hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-200 cursor-pointer"
           aria-label="Toggle theme"
         >
-          {theme === 'light' ? <Moon className="w-4 h-4 text-[#6C63FF]" /> : <Sun className="w-4 h-4 text-[#00D4FF]" />}
+          {theme === 'dark' ? <Sun className="w-5 h-5" strokeWidth={1.5} /> : <Moon className="w-5 h-5" strokeWidth={1.5} />}
         </button>
       </nav>
 
       {/* Body */}
-      <main className="relative z-10 flex flex-col items-center justify-center px-4 py-8">
-        <div className="w-full max-w-md animate-fade-in space-y-6">
+      <main className="relative z-10 flex flex-col items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md space-y-6">
           <div className="text-center">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#6C63FF] to-[#00D4FF] flex items-center justify-center mx-auto mb-4 shadow-xl shadow-[#6C63FF]/30">
-              <Sparkles className="w-7 h-7 text-white" />
+            <div className="w-12 h-12 rounded-md bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border)] flex items-center justify-center mx-auto mb-3">
+              <ShieldCheck className="w-6 h-6" strokeWidth={1.5} />
             </div>
           </div>
 
@@ -73,14 +70,14 @@ const AdminLogin = () => {
           <div className="text-center space-y-3 pt-2">
             <Link
               to="/teacher/login"
-              className="flex items-center justify-center gap-2 text-[#475569] dark:text-[#A0A0B0] hover:text-[#0F172A] dark:hover:text-white text-xs font-extrabold transition-colors"
+              className="flex items-center justify-center gap-2 text-[var(--text-secondary)] hover:text-[var(--accent)] text-xs font-sans font-medium transition-colors"
             >
-              <GraduationCap className="w-4 h-4 text-[#6C63FF]" />
+              <GraduationCap className="w-4 h-4 text-[var(--accent)]" strokeWidth={1.5} />
               Are you a faculty member? Faculty Login →
             </Link>
             <Link
               to="/student"
-              className="block text-[#64748B] dark:text-slate-400 hover:underline text-xs font-semibold transition-colors"
+              className="block text-[var(--text-muted)] hover:underline text-xs font-sans transition-colors"
             >
               Access student class viewer without login
             </Link>
@@ -89,7 +86,7 @@ const AdminLogin = () => {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 py-6 text-center text-xs text-[#475569] dark:text-[#A0A0B0] font-extrabold">
+      <footer className="relative z-10 py-6 text-center text-xs text-[var(--text-muted)] font-sans font-medium">
         AI Timetable System v2.0 · Enterprise Edition
       </footer>
     </div>

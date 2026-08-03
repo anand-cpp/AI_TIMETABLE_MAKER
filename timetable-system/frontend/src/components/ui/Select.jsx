@@ -22,9 +22,9 @@ const Select = forwardRef(
     return (
       <div className={cn('space-y-1.5', wrapperClassName)}>
         {label && (
-          <label className="block text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-200">
+          <label className="block text-[11px] font-sans font-semibold uppercase tracking-widest text-[var(--text-muted)]">
             {label}
-            {required && <span className="text-rose-600 dark:text-rose-400 ml-1">*</span>}
+            {required && <span className="text-[var(--error)] ml-1">*</span>}
           </label>
         )}
         <div className="relative">
@@ -32,17 +32,21 @@ const Select = forwardRef(
             ref={ref}
             disabled={disabled}
             className={cn(
-              'block w-full rounded-2xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 px-4 py-3 pr-10',
-              'text-sm font-bold text-slate-900 dark:text-white appearance-none cursor-pointer',
-              'focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 dark:focus:border-cyan-400',
+              'block w-full rounded-sm border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 pr-9',
+              'text-sm font-sans text-[var(--text-primary)] appearance-none cursor-pointer',
+              'focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              'transition-all duration-200 shadow-sm',
-              error && 'border-rose-500 focus:ring-rose-500/40 focus:border-rose-500',
+              'transition-colors duration-150',
+              error && 'border-[var(--error)] focus:border-[var(--error)] focus:ring-[var(--error)]',
               className
             )}
             {...props}
           >
-            {placeholder && <option value="" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">{placeholder}</option>}
+            {placeholder && (
+              <option value="" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">
+                {placeholder}
+              </option>
+            )}
             {children
               ? children
               : options.map((opt) => (
@@ -50,18 +54,18 @@ const Select = forwardRef(
                     key={opt.value}
                     value={opt.value}
                     disabled={opt.disabled}
-                    className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white"
+                    className="bg-[var(--bg-surface)] text-[var(--text-primary)]"
                   >
                     {opt.label}
                   </option>
                 ))}
           </select>
-          <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-blue-600 dark:text-cyan-400">
-            <ChevronDown className="w-4 h-4" />
+          <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-[var(--text-muted)]">
+            <ChevronDown className="w-4 h-4" strokeWidth={1.5} />
           </div>
         </div>
-        {hint && !error && <p className="text-xs font-semibold text-slate-500 dark:text-slate-300">{hint}</p>}
-        {error && <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{error}</p>}
+        {hint && !error && <p className="text-xs font-sans text-[var(--text-secondary)]">{hint}</p>}
+        {error && <p className="text-xs font-sans font-medium text-[var(--error)]">{error}</p>}
       </div>
     );
   }

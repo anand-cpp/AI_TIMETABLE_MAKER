@@ -4,6 +4,7 @@ import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Breadcrumb from '../../components/ui/Breadcrumb';
 import SubjectList from '../../components/subjects/SubjectList';
 import SubjectForm from '../../components/subjects/SubjectForm';
 import subjectService from '../../services/subjectService';
@@ -96,14 +97,16 @@ const Subjects = () => {
   const electiveCount = subjects.filter((s) => s.type === 'elective').length;
 
   return (
-    <div>
+    <div className="space-y-6">
+      <Breadcrumb items={[{ label: 'Setup', to: '/admin/departments' }, { label: 'Subjects' }]} />
+
       <PageHeader
-        title="Subjects"
-        description="Manage theory, lab, and elective subjects for all classes"
+        title="Subjects & Labs"
+        description="Add theory, lab, and elective subjects for all classes (Step 4 of 4 in setup)"
         action={
           <Button
             onClick={handleOpenCreate}
-            leftIcon={<Plus className="w-4 h-4" />}
+            leftIcon={<Plus className="w-4 h-4" strokeWidth={1.5} />}
           >
             Add Subject
           </Button>
@@ -111,39 +114,41 @@ const Subjects = () => {
       />
 
       {/* Type summary */}
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-3 gap-4 font-sans">
         {[
-          { label: 'Theory', count: theoryCount, color: 'bg-blue-50/80 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' },
-          { label: 'Lab', count: labCount, color: 'bg-purple-50/80 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800' },
-          { label: 'Elective', count: electiveCount, color: 'bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' },
+          { label: 'Theory', count: theoryCount, type: 'theory' },
+          { label: 'Lab', count: labCount, type: 'lab' },
+          { label: 'Elective', count: electiveCount, type: 'elective' },
         ].map((item) => (
           <div
             key={item.label}
-            className={`rounded-2xl border p-4 ${item.color} cursor-pointer transition-all hover:scale-[1.02]`}
-            onClick={() => setFilterType(filterType === item.label.toLowerCase() ? '' : item.label.toLowerCase())}
+            className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-4 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
+            onClick={() => setFilterType(filterType === item.type ? '' : item.type)}
           >
-            <p className="text-2xl font-black">{item.count}</p>
-            <p className="text-xs font-bold uppercase tracking-wider mt-0.5">{item.label}</p>
+            <p className="text-2xl font-mono font-medium text-[var(--accent)]">{item.count}</p>
+            <p className="text-xs font-sans font-semibold uppercase tracking-wider text-[var(--text-secondary)] mt-0.5">{item.label}</p>
           </div>
         ))}
       </div>
 
-      <div className="glass-panel p-0 rounded-3xl overflow-hidden shadow-xl">
+      <div className="bg-[var(--bg-surface)] rounded-md border border-[var(--border)] p-0 overflow-hidden">
         {/* Filter bar */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-4 flex-wrap">
-          <BookOpen className="w-5 h-5 text-blue-500" />
-          <span className="text-sm font-bold text-slate-900 dark:text-white">
-            {subjects.length} Subject{subjects.length !== 1 ? 's' : ''}
-          </span>
+        <div className="px-6 py-4 border-b border-[var(--border)] flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-[var(--accent)]" strokeWidth={1.5} />
+            <span className="text-sm font-serif font-normal text-[var(--text-primary)]">
+              {subjects.length} Subject{subjects.length !== 1 ? 's' : ''}
+            </span>
+          </div>
           <div className="ml-auto flex gap-3">
             <select
               value={filterClass}
               onChange={(e) => setFilterClass(e.target.value)}
-              className="text-xs font-bold border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
+              className="text-xs font-sans border border-[var(--border)] bg-transparent text-[var(--text-primary)] rounded-sm px-3 py-2 focus:outline-none focus:border-[var(--accent)] cursor-pointer"
             >
-              <option value="" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">All Classes</option>
+              <option value="" className="bg-[var(--bg-surface)]">All Classes</option>
               {classes.map((c) => (
-                <option key={c._id} value={c._id} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                <option key={c._id} value={c._id} className="bg-[var(--bg-surface)]">
                   {c.departmentId?.code} S{c.semester}{c.section}
                 </option>
               ))}
@@ -151,12 +156,12 @@ const Subjects = () => {
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="text-xs font-bold border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
+              className="text-xs font-sans border border-[var(--border)] bg-transparent text-[var(--text-primary)] rounded-sm px-3 py-2 focus:outline-none focus:border-[var(--accent)] cursor-pointer"
             >
-              <option value="" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">All Types</option>
-              <option value="theory" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Theory</option>
-              <option value="lab" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Lab</option>
-              <option value="elective" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Elective</option>
+              <option value="" className="bg-[var(--bg-surface)]">All Types</option>
+              <option value="theory" className="bg-[var(--bg-surface)]">Theory</option>
+              <option value="lab" className="bg-[var(--bg-surface)]">Lab</option>
+              <option value="elective" className="bg-[var(--bg-surface)]">Elective</option>
             </select>
           </div>
         </div>

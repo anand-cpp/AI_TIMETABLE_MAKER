@@ -229,8 +229,9 @@ const PeriodRow = ({ period, index, onChange, onDelete, canDelete, onSetDuration
   );
 };
 
-const PeriodTimeline = ({ settings, onSubmit, loading, isFriday = false }) => {
+const PeriodTimeline = ({ settings, onSubmit, onPrevious, loading, isFriday = false }) => {
   const [timeline, setTimeline] = useState([]);
+  const [nextRequested, setNextRequested] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -346,7 +347,7 @@ const PeriodTimeline = ({ settings, onSubmit, loading, isFriday = false }) => {
     }));
 
     const key = isFriday ? 'fridayTimeline' : 'periodTimeline';
-    onSubmit({ [key]: cleanTimeline });
+    onSubmit({ [key]: cleanTimeline }, nextRequested);
   };
 
   const teachingCount = timeline.filter((p) => !p.isBreak).length;
@@ -355,12 +356,12 @@ const PeriodTimeline = ({ settings, onSubmit, loading, isFriday = false }) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Top Header & Actions */}
-      <div className="flex items-center justify-between flex-wrap gap-3 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="px-3 py-1 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded-full font-bold">
+      <div className="flex items-center justify-between flex-wrap gap-3 p-3 bg-[var(--bg-surface-alt)] border border-[var(--border)] rounded-sm">
+        <div className="flex items-center gap-2 text-xs font-sans">
+          <span className="px-2.5 py-0.5 bg-[var(--accent-soft)] text-[var(--accent)] rounded-xs font-semibold">
             {teachingCount} teaching period{teachingCount !== 1 ? 's' : ''}
           </span>
-          <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded-full font-bold flex items-center gap-1">
+          <span className="px-2.5 py-0.5 bg-[var(--bg-surface)] text-[var(--text-secondary)] rounded-xs border border-[var(--border)] font-medium flex items-center gap-1">
             🍱 {breakCount} break{breakCount !== 1 ? 's' : ''}
           </span>
         </div>
@@ -371,7 +372,7 @@ const PeriodTimeline = ({ settings, onSubmit, loading, isFriday = false }) => {
             variant="outline"
             size="xs"
             onClick={handleAutoAlignTimes}
-            leftIcon={<Wand2 className="w-3.5 h-3.5 text-blue-500" />}
+            leftIcon={<Wand2 className="w-3.5 h-3.5 text-[var(--accent)]" strokeWidth={1.5} />}
             title="Sequentially align all period start & end times"
           >
             Auto-Align Times
@@ -381,7 +382,7 @@ const PeriodTimeline = ({ settings, onSubmit, loading, isFriday = false }) => {
             variant="ghost"
             size="xs"
             onClick={handleAddLunchBreak}
-            leftIcon={<Utensils className="w-3.5 h-3.5 text-amber-500" />}
+            leftIcon={<Utensils className="w-3.5 h-3.5 text-[var(--warning)]" strokeWidth={1.5} />}
           >
             + Lunch Break
           </Button>
@@ -390,7 +391,7 @@ const PeriodTimeline = ({ settings, onSubmit, loading, isFriday = false }) => {
             variant="ghost"
             size="xs"
             onClick={handleAddTeaBreak}
-            leftIcon={<Coffee className="w-3.5 h-3.5 text-purple-500" />}
+            leftIcon={<Coffee className="w-3.5 h-3.5 text-[var(--accent)]" strokeWidth={1.5} />}
           >
             + Tea Break
           </Button>
@@ -399,7 +400,7 @@ const PeriodTimeline = ({ settings, onSubmit, loading, isFriday = false }) => {
             variant="secondary"
             size="xs"
             onClick={handleAddTeachingPeriod}
-            leftIcon={<Plus className="w-3.5 h-3.5" />}
+            leftIcon={<Plus className="w-3.5 h-3.5" strokeWidth={1.5} />}
           >
             + Period
           </Button>
@@ -407,7 +408,7 @@ const PeriodTimeline = ({ settings, onSubmit, loading, isFriday = false }) => {
       </div>
 
       {/* Table Columns Header */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 px-14 text-xs font-black text-slate-400 dark:text-slate-400 uppercase tracking-widest hidden sm:grid">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 px-14 text-[10px] font-sans font-semibold text-[var(--text-muted)] uppercase tracking-wider hidden sm:grid">
         <span>Label</span>
         <span>Start Time</span>
         <span>End Time</span>
@@ -430,11 +431,39 @@ const PeriodTimeline = ({ settings, onSubmit, loading, isFriday = false }) => {
         ))}
       </div>
 
-      {/* Submit Button */}
-      <div className="flex justify-end pt-2">
-        <Button type="submit" loading={loading} className="px-6 shadow-lg">
-          Save {isFriday ? 'Friday' : 'Main'} Timeline
-        </Button>
+      {/* Submit Button Row */}
+      <div className="flex items-center justify-between pt-4 border-t border-[var(--border)] font-sans">
+        {!isFriday ? (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onPrevious}
+            leftIcon={<ArrowLeft className="w-4 h-4" strokeWidth={1.5} />}
+          >
+            ← Previous
+          </Button>
+        ) : <div />}
+
+        <div className="flex items-center gap-3">
+          <Button
+            type="submit"
+            loading={loading}
+            onClick={() => setNextRequested(false)}
+          >
+            Save {isFriday ? 'Friday' : 'Main'} Timeline
+          </Button>
+          {!isFriday && (
+            <Button
+              type="submit"
+              variant="outline"
+              loading={loading}
+              onClick={() => setNextRequested(true)}
+              rightIcon={<ArrowRight className="w-4 h-4" strokeWidth={1.5} />}
+            >
+              Save & Next →
+            </Button>
+          )}
+        </div>
       </div>
     </form>
   );

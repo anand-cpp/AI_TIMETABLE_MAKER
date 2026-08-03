@@ -4,12 +4,11 @@ import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
-import Badge from '../../components/ui/Badge';
+import Breadcrumb from '../../components/ui/Breadcrumb';
 import TeacherList from '../../components/teachers/TeacherList';
 import TeacherForm from '../../components/teachers/TeacherForm';
 import teacherService from '../../services/teacherService';
 import { Plus, Users, Copy, Check, Eye, EyeOff } from 'lucide-react';
-import { cn } from '../../utils/cn';
 
 const Teachers = () => {
   const [teachers, setTeachers] = useState([]);
@@ -65,7 +64,6 @@ const Teachers = () => {
         const res = await teacherService.create(data);
         handleCloseForm();
         load();
-        // Show credentials modal for new teacher
         if (res.data.credentials) {
           setCredentials({
             name: res.data.teacher.name,
@@ -122,28 +120,30 @@ const Teachers = () => {
   };
 
   return (
-    <div>
+    <div className="space-y-6">
+      <Breadcrumb items={[{ label: 'Setup', to: '/admin/departments' }, { label: 'Teachers' }]} />
+
       <PageHeader
-        title="Teachers"
-        description="Manage teacher accounts, availability, and preferences"
+        title="Faculty / Teachers"
+        description="Add teacher accounts, set availability, and manage workload limits (Step 3 of 4 in setup)"
         action={
           <Button
             onClick={handleOpenCreate}
-            leftIcon={<Plus className="w-4 h-4" />}
+            leftIcon={<Plus className="w-4 h-4" strokeWidth={1.5} />}
           >
             Add Teacher
           </Button>
         }
       />
 
-      <div className="card p-0 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200 flex items-center gap-2">
-          <Users className="w-4 h-4 text-gray-400" />
-          <span className="text-sm font-medium text-gray-700">
+      <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-0 overflow-hidden">
+        <div className="px-6 py-4 border-b border-[var(--border)] flex items-center gap-2">
+          <Users className="w-4 h-4 text-[var(--text-muted)]" strokeWidth={1.5} />
+          <span className="text-xs font-sans font-medium text-[var(--text-primary)]">
             {teachers.length} Teacher{teachers.length !== 1 ? 's' : ''}
           </span>
-          <span className="text-gray-300 mx-1">·</span>
-          <span className="text-xs text-gray-400">
+          <span className="text-[var(--text-muted)] text-xs">·</span>
+          <span className="text-xs font-sans text-[var(--text-secondary)]">
             {teachers.filter((t) => t.isActive).length} active
           </span>
         </div>
@@ -178,10 +178,10 @@ const Teachers = () => {
         title="Teacher Login Credentials"
         size="sm"
       >
-        <div className="space-y-4">
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-xs text-amber-700">
-              <strong>Important:</strong> Share these credentials with the teacher.
+        <div className="space-y-4 font-sans">
+          <div className="p-3 bg-[var(--accent-soft)] border border-[var(--border)] rounded-sm">
+            <p className="text-xs text-[var(--text-secondary)]">
+              <strong className="text-[var(--text-primary)]">Important:</strong> Share these credentials with the teacher.
               {credentials?.password
                 ? ' The password is only shown once — save it now.'
                 : ' Password was set during creation.'}
@@ -191,23 +191,23 @@ const Teachers = () => {
           {credentials && (
             <div className="space-y-3">
               <div>
-                <p className="text-xs text-gray-500 mb-1">Teacher Name</p>
-                <p className="text-sm font-semibold text-gray-900">{credentials.name}</p>
+                <p className="text-[10px] font-sans font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Teacher Name</p>
+                <p className="text-sm font-serif font-normal text-[var(--text-primary)]">{credentials.name}</p>
               </div>
 
               <div>
-                <p className="text-xs text-gray-500 mb-1">Username</p>
-                <div className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg border">
-                  <code className="flex-1 text-sm font-mono text-gray-900">
+                <p className="text-[10px] font-sans font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Username</p>
+                <div className="flex items-center gap-2 p-2.5 bg-[var(--bg-surface-alt)] rounded-sm border border-[var(--border)]">
+                  <code className="flex-1 text-xs font-mono text-[var(--text-primary)]">
                     {credentials.username}
                   </code>
                   <button
                     onClick={() => handleCopy(credentials.username, 'username')}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
                   >
                     {copied === 'username'
-                      ? <Check className="w-4 h-4 text-green-500" />
-                      : <Copy className="w-4 h-4" />
+                      ? <Check className="w-4 h-4 text-[var(--success)]" strokeWidth={1.5} />
+                      : <Copy className="w-4 h-4" strokeWidth={1.5} />
                     }
                   </button>
                 </div>
@@ -215,27 +215,27 @@ const Teachers = () => {
 
               {credentials.password && (
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Password</p>
-                  <div className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg border">
-                    <code className="flex-1 text-sm font-mono text-gray-900">
+                  <p className="text-[10px] font-sans font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Password</p>
+                  <div className="flex items-center gap-2 p-2.5 bg-[var(--bg-surface-alt)] rounded-sm border border-[var(--border)]">
+                    <code className="flex-1 text-xs font-mono text-[var(--text-primary)]">
                       {showPassword ? credentials.password : '••••••••••'}
                     </code>
                     <button
                       onClick={() => setShowPassword((s) => !s)}
-                      className="text-gray-400 hover:text-gray-600"
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
                     >
                       {showPassword
-                        ? <EyeOff className="w-4 h-4" />
-                        : <Eye className="w-4 h-4" />
+                        ? <EyeOff className="w-4 h-4" strokeWidth={1.5} />
+                        : <Eye className="w-4 h-4" strokeWidth={1.5} />
                       }
                     </button>
                     <button
                       onClick={() => handleCopy(credentials.password, 'password')}
-                      className="text-gray-400 hover:text-gray-600"
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
                     >
                       {copied === 'password'
-                        ? <Check className="w-4 h-4 text-green-500" />
-                        : <Copy className="w-4 h-4" />
+                        ? <Check className="w-4 h-4 text-[var(--success)]" strokeWidth={1.5} />
+                        : <Copy className="w-4 h-4" strokeWidth={1.5} />
                       }
                     </button>
                   </div>

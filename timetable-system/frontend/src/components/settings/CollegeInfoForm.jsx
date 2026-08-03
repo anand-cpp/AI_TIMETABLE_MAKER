@@ -1,9 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import { ArrowRight } from 'lucide-react';
 
 const CollegeInfoForm = ({ settings, onSubmit, loading }) => {
+  const [nextRequested, setNextRequested] = useState(false);
+
   const {
     register,
     handleSubmit,
@@ -27,8 +30,12 @@ const CollegeInfoForm = ({ settings, onSubmit, loading }) => {
     }
   }, [settings, reset]);
 
+  const handleFormSubmit = (data) => {
+    onSubmit(data, nextRequested);
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 font-sans">
       <Input
         label="College Name"
         required
@@ -40,7 +47,7 @@ const CollegeInfoForm = ({ settings, onSubmit, loading }) => {
         })}
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
           label="Teacher Daily Period Limit"
           type="number"
@@ -67,9 +74,18 @@ const CollegeInfoForm = ({ settings, onSubmit, loading }) => {
         />
       </div>
 
-      <div className="flex justify-end">
-        <Button type="submit" loading={loading}>
+      <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border)]">
+        <Button type="submit" loading={loading} onClick={() => setNextRequested(false)}>
           Save College Info
+        </Button>
+        <Button
+          type="submit"
+          variant="outline"
+          loading={loading}
+          onClick={() => setNextRequested(true)}
+          rightIcon={<ArrowRight className="w-4 h-4" strokeWidth={1.5} />}
+        >
+          Save & Next →
         </Button>
       </div>
     </form>

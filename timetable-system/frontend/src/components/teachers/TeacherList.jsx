@@ -3,27 +3,34 @@ import Table from '../ui/Table';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import Tooltip from '../ui/Tooltip';
-import { cn } from '../../utils/cn';
+import { getPaletteForIndex } from '../../utils/palette';
+import { useTheme } from '../../context/ThemeContext';
 
 const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials }) => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const columns = [
     {
       key: 'name',
       title: 'Teacher',
-      render: (val, row) => (
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            'w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold',
-            'bg-purple-100 text-purple-700'
-          )}>
-            {val?.charAt(0)?.toUpperCase() || '?'}
+      render: (val, row, index) => {
+        const paletteStyle = getPaletteForIndex(index, isDark);
+        return (
+          <div className="flex items-center gap-3">
+            <div
+              style={paletteStyle}
+              className="w-8 h-8 rounded-sm flex items-center justify-center shrink-0 font-sans font-bold text-xs border uppercase"
+            >
+              {val?.charAt(0)?.toUpperCase() || '?'}
+            </div>
+            <div>
+              <p className="font-serif font-normal text-base text-[var(--text-primary)]">{val}</p>
+              <p className="text-xs font-sans text-[var(--text-secondary)]">@{row.username}</p>
+            </div>
           </div>
-          <div>
-            <p className="font-bold text-slate-900 dark:text-white">{val}</p>
-            <p className="text-xs text-slate-400 dark:text-slate-400">@{row.username}</p>
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       key: 'departmentId',
@@ -31,11 +38,11 @@ const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials })
       render: (val) =>
         val ? (
           <div>
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{val.name}</p>
-            <p className="text-xs text-slate-400 dark:text-slate-400">{val.code}</p>
+            <p className="text-xs font-sans font-medium text-[var(--text-primary)]">{val.name}</p>
+            <p className="text-xs font-sans text-[var(--text-secondary)]">{val.code}</p>
           </div>
         ) : (
-          <span className="text-slate-400 text-sm">—</span>
+          <span className="text-[var(--text-muted)] text-xs">—</span>
         ),
     },
     {
@@ -44,19 +51,19 @@ const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials })
       render: (_, row) => (
         <div className="space-y-0.5">
           {row.email && (
-            <div className="flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
-              <Mail className="w-3 h-3 text-blue-500" />
+            <div className="flex items-center gap-1.5 text-xs font-sans text-[var(--text-secondary)]">
+              <Mail className="w-3.5 h-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
               <span>{row.email}</span>
             </div>
           )}
           {row.phone && (
-            <div className="flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
-              <Phone className="w-3 h-3 text-emerald-500" />
+            <div className="flex items-center gap-1.5 text-xs font-sans text-[var(--text-secondary)]">
+              <Phone className="w-3.5 h-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
               <span>{row.phone}</span>
             </div>
           )}
           {!row.email && !row.phone && (
-            <span className="text-slate-400 text-sm">—</span>
+            <span className="text-[var(--text-muted)] text-xs">—</span>
           )}
         </div>
       ),
@@ -77,7 +84,7 @@ const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials })
         val ? (
           <Badge variant="info" dot>Preferred</Badge>
         ) : (
-          <span className="text-gray-300 text-sm">—</span>
+          <span className="text-[var(--text-muted)] text-xs">—</span>
         ),
     },
     {
@@ -101,7 +108,7 @@ const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials })
               variant="ghost"
               size="xs"
               onClick={() => onShowCredentials?.(row)}
-              leftIcon={<Key className="w-3.5 h-3.5" />}
+              leftIcon={<Key className="w-3.5 h-3.5" strokeWidth={1.5} />}
             />
           </Tooltip>
           <Tooltip content="Edit teacher">
@@ -109,7 +116,7 @@ const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials })
               variant="ghost"
               size="xs"
               onClick={() => onEdit(row)}
-              leftIcon={<Pencil className="w-3.5 h-3.5" />}
+              leftIcon={<Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />}
             />
           </Tooltip>
           <Tooltip content="Delete teacher">
@@ -117,8 +124,8 @@ const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials })
               variant="ghost"
               size="xs"
               onClick={() => onDelete(row)}
-              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              className="text-[var(--error)] hover:bg-[var(--bg-hover)]"
+              leftIcon={<Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />}
             />
           </Tooltip>
         </div>

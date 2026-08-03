@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import SplashScreen from './components/common/SplashScreen';
 
 // Layouts
 import AdminLayout from './components/layout/AdminLayout';
@@ -22,6 +24,8 @@ import Classes from './pages/admin/Classes';
 import Teachers from './pages/admin/Teachers';
 import Subjects from './pages/admin/Subjects';
 import TimetableBuilder from './pages/admin/TimetableBuilder';
+import DepartmentTimetable from './pages/admin/DepartmentTimetable';
+import YearTimetable from './pages/admin/YearTimetable';
 import Settings from './pages/admin/Settings';
 import Suggestions from './pages/admin/Suggestions';
 import EmailManager from './pages/admin/EmailManager';
@@ -33,9 +37,13 @@ import MyTimetable from './pages/teacher/MyTimetable';
 import MySuggestions from './pages/teacher/MySuggestions';
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
   return (
     <ThemeProvider>
       <AuthProvider>
+        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+        
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Home />} />
@@ -60,6 +68,8 @@ function App() {
             <Route path="teachers" element={<Teachers />} />
             <Route path="subjects" element={<Subjects />} />
             <Route path="timetable" element={<TimetableBuilder />} />
+            <Route path="department-timetable" element={<DepartmentTimetable />} />
+            <Route path="year-timetable" element={<YearTimetable />} />
             <Route path="upload" element={<Upload />} />
             <Route path="suggestions" element={<Suggestions />} />
             <Route path="email" element={<EmailManager />} />

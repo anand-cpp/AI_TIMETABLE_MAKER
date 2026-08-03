@@ -25,23 +25,27 @@ const AdminLayout = () => {
   const title = pageTitles[location.pathname] || 'Admin Panel';
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-200">
       <Toaster
         position="top-right"
         toastOptions={{
           duration: 4000,
           style: {
             fontSize: '13px',
-            borderRadius: '14px',
-            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)',
+            borderRadius: '4px',
+            border: '1px solid var(--border)',
+            borderLeft: '3px solid var(--accent)',
+            backgroundColor: 'var(--bg-surface)',
+            color: 'var(--text-primary)',
             padding: '12px 16px',
-            fontWeight: '600',
+            fontWeight: '500',
+            fontFamily: 'Inter, sans-serif',
           },
           success: {
-            iconTheme: { primary: '#10b981', secondary: '#fff' },
+            iconTheme: { primary: 'var(--success)', secondary: '#fff' },
           },
           error: {
-            iconTheme: { primary: '#f43f5e', secondary: '#fff' },
+            iconTheme: { primary: 'var(--error)', secondary: '#fff' },
           },
         }}
       />
@@ -60,11 +64,11 @@ const AdminLayout = () => {
 
       <main
         className={cn(
-          'pt-16 min-h-screen transition-all duration-300 ease-in-out',
-          collapsed ? 'ml-16' : 'ml-64'
+          'pt-16 min-h-screen transition-all duration-200 ease-in-out',
+          collapsed ? 'ml-16' : 'ml-[240px]'
         )}
       >
-        <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+        <div className="p-8 md:p-10 max-w-6xl mx-auto space-y-6">
           <Outlet />
         </div>
       </main>

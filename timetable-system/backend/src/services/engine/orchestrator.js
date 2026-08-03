@@ -26,7 +26,7 @@ const run = async (options = {}) => {
     // ── Step 1: Load Data ──────────────────────────────────────────────────
     let data;
     try {
-      data = await loadData();
+      data = await loadData(options);
     } catch (err) {
       return {
         success: false,

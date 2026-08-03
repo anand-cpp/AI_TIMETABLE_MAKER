@@ -2,7 +2,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { cn } from '../../utils/cn';
 import { Menu, Moon, Sun, Shield, GraduationCap } from 'lucide-react';
-import { motion } from 'framer-motion';
 
 const Topbar = ({ collapsed, onMenuToggle, title }) => {
   const { user } = useAuth();
@@ -11,66 +10,59 @@ const Topbar = ({ collapsed, onMenuToggle, title }) => {
   return (
     <header
       className={cn(
-        'fixed top-0 right-0 h-16 glass-panel border-b border-[#CBD5E1] dark:border-white/10 z-30',
-        'flex items-center justify-between px-6',
-        'transition-all duration-300 ease-in-out',
-        collapsed ? 'left-16' : 'left-64'
+        'fixed top-0 right-0 h-16 bg-[var(--bg-primary)] border-b border-[var(--border)] z-30',
+        'flex items-center justify-between px-10',
+        'transition-all duration-200 ease-in-out',
+        collapsed ? 'left-16' : 'left-[240px]'
       )}
     >
       {/* Left Title */}
       <div className="flex items-center gap-4">
         <button
           onClick={onMenuToggle}
-          className="text-[#475569] dark:text-[#A0A0B0] hover:text-[#0F172A] dark:hover:text-white lg:hidden"
+          className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] lg:hidden cursor-pointer"
           aria-label="Toggle menu"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-5 h-5" strokeWidth={1.5} />
         </button>
         {title && (
-          <h1 className="text-base font-display font-black text-[#0F172A] dark:text-white tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-serif font-normal text-[var(--text-primary)] tracking-tight">
             {title}
           </h1>
         )}
       </div>
 
       {/* Right Controls & Theme Toggle */}
-      <div className="flex items-center gap-4">
-        {/* Animated Sun/Moon Theme Toggle */}
+      <div className="flex items-center gap-5">
+        {/* Theme Toggle Button */}
         <button
           onClick={toggleTheme}
-          className="p-2.5 rounded-xl bg-[#F1F5F9] dark:bg-white/5 border border-[#CBD5E1] dark:border-white/10 text-[#0F172A] dark:text-white transition-all hover:scale-105 active:scale-95 shadow-xs"
+          className="p-2 rounded-sm bg-transparent hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-200 cursor-pointer"
           aria-label="Toggle theme"
           title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
         >
-          <motion.div
-            key={theme}
-            initial={{ rotate: -90, opacity: 0 }}
-            animate={{ rotate: 0, opacity: 1 }}
-            transition={{ duration: 0.3 }}
-          >
-            {theme === 'dark' ? (
-              <Sun className="w-4 h-4 text-[#00D4FF]" />
-            ) : (
-              <Moon className="w-4 h-4 text-[#6C63FF]" />
-            )}
-          </motion.div>
+          {theme === 'dark' ? (
+            <Sun className="w-5 h-5" strokeWidth={1.5} />
+          ) : (
+            <Moon className="w-5 h-5" strokeWidth={1.5} />
+          )}
         </button>
 
-        {/* User profile pill */}
-        <div className="flex items-center gap-3 pl-3 border-l border-[#CBD5E1] dark:border-white/10">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#6C63FF] to-[#00D4FF] flex items-center justify-center text-white text-xs font-bold shadow-md shadow-[#6C63FF]/30">
+        {/* User Profile Badge */}
+        <div className="flex items-center gap-3 pl-4 border-l border-[var(--border)]">
+          <div className="w-8 h-8 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] font-serif font-bold text-sm flex items-center justify-center border border-[var(--border)]">
             {user?.role === 'admin' ? (
-              <Shield className="w-4 h-4" />
+              <Shield className="w-4 h-4" strokeWidth={1.5} />
             ) : (
-              <GraduationCap className="w-4 h-4" />
+              <GraduationCap className="w-4 h-4" strokeWidth={1.5} />
             )}
           </div>
           <div className="hidden sm:block">
-            <p className="text-xs font-black text-[#0F172A] dark:text-white leading-none">
-              {user?.name || user?.username || 'Authenticated User'}
+            <p className="text-xs font-sans font-medium text-[var(--text-primary)] leading-none">
+              {user?.name || user?.username || 'admin'}
             </p>
-            <p className="text-[10px] font-extrabold text-[#6C63FF] dark:text-[#00D4FF] capitalize mt-0.5">
-              {user?.role}
+            <p className="text-[10px] font-sans font-semibold text-[var(--text-muted)] tracking-widest uppercase mt-0.5">
+              {user?.role || 'Admin'}
             </p>
           </div>
         </div>

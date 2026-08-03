@@ -3,45 +3,37 @@ import Table from '../ui/Table';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import Tooltip from '../ui/Tooltip';
-import { cn } from '../../utils/cn';
+import { getPaletteForIndex } from '../../utils/palette';
+import { useTheme } from '../../context/ThemeContext';
 
-const typeConfig = {
-  theory: {
-    icon: BookOpen,
-    color: 'bg-blue-100 text-blue-600',
-    badge: 'primary',
-    label: 'Theory',
-  },
-  lab: {
-    icon: FlaskConical,
-    color: 'bg-purple-100 text-purple-600',
-    badge: 'info',
-    label: 'Lab',
-  },
-  elective: {
-    icon: Layers,
-    color: 'bg-green-100 text-green-600',
-    badge: 'success',
-    label: 'Elective',
-  },
+const typeIconMap = {
+  theory: BookOpen,
+  lab: FlaskConical,
+  elective: Layers,
 };
 
 const SubjectList = ({ subjects, loading, onEdit, onDelete }) => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const columns = [
     {
       key: 'name',
       title: 'Subject',
-      render: (val, row) => {
-        const config = typeConfig[row.type] || typeConfig.theory;
-        const Icon = config.icon;
+      render: (val, row, index) => {
+        const Icon = typeIconMap[row.type] || BookOpen;
+        const paletteStyle = getPaletteForIndex(index, isDark);
         return (
           <div className="flex items-center gap-3">
-            <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', config.color)}>
-              <Icon className="w-4 h-4" />
+            <div
+              style={paletteStyle}
+              className="w-8 h-8 rounded-sm flex items-center justify-center shrink-0 border"
+            >
+              <Icon className="w-4 h-4" strokeWidth={1.5} />
             </div>
             <div>
-              <p className="font-bold text-slate-900 dark:text-white">{val}</p>
-              <p className="text-xs text-slate-400 dark:text-slate-400 font-mono">{row.code}</p>
+              <p className="font-serif font-normal text-base text-[var(--text-primary)]">{val}</p>
+              <p className="text-xs font-mono text-[var(--text-secondary)]">{row.code}</p>
             </div>
           </div>
         );
@@ -52,19 +44,22 @@ const SubjectList = ({ subjects, loading, onEdit, onDelete }) => {
       title: 'Class',
       render: (val) =>
         val ? (
-          <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <span className="text-xs font-sans font-medium text-[var(--text-primary)]">
             {val.departmentId?.code || '—'} S{val.semester}{val.section}
           </span>
         ) : (
-          <span className="text-slate-400">—</span>
+          <span className="text-[var(--text-muted)] text-xs">—</span>
         ),
     },
     {
       key: 'type',
       title: 'Type',
       render: (val) => {
-        const config = typeConfig[val] || typeConfig.theory;
-        return <Badge variant={config.badge}>{config.label}</Badge>;
+        return (
+          <span className="px-2 py-0.5 rounded-xs bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border)] text-[10px] font-sans font-semibold uppercase tracking-wider">
+            {val}
+          </span>
+        );
       },
     },
     {
@@ -73,13 +68,13 @@ const SubjectList = ({ subjects, loading, onEdit, onDelete }) => {
       render: (val, row) => {
         if (row.type === 'lab') {
           return (
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            <span className="text-xs font-sans text-[var(--text-primary)]">
               {row.labDetails?.duration || 2} periods
             </span>
           );
         }
         return (
-          <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <span className="text-xs font-sans text-[var(--text-primary)]">
             {val || 0} hrs/week
           </span>
         );
@@ -100,14 +95,14 @@ const SubjectList = ({ subjects, loading, onEdit, onDelete }) => {
           if (b2) teachers.push(`${b2} (B2)`);
         }
         return teachers.length > 0 ? (
-          <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <div className="text-xs font-sans text-[var(--text-primary)]">
             {teachers.slice(0, 2).join(', ')}
             {teachers.length > 2 && (
-              <span className="text-slate-400"> +{teachers.length - 2}</span>
+              <span className="text-[var(--text-muted)]"> +{teachers.length - 2}</span>
             )}
           </div>
         ) : (
-          <span className="text-slate-400 text-sm">—</span>
+          <span className="text-[var(--text-muted)] text-xs">—</span>
         );
       },
     },
@@ -122,7 +117,7 @@ const SubjectList = ({ subjects, loading, onEdit, onDelete }) => {
               variant="ghost"
               size="sm"
               onClick={() => onEdit(row)}
-              leftIcon={<Pencil className="w-3.5 h-3.5" />}
+              leftIcon={<Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />}
             >
               Edit
             </Button>
@@ -132,8 +127,8 @@ const SubjectList = ({ subjects, loading, onEdit, onDelete }) => {
               variant="ghost"
               size="sm"
               onClick={() => onDelete(row)}
-              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              className="text-[var(--error)] hover:bg-[var(--bg-hover)]"
+              leftIcon={<Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />}
             >
               Delete
             </Button>

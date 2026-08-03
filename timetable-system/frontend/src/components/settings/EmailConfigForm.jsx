@@ -3,14 +3,15 @@ import { useForm } from 'react-hook-form';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Toggle from '../ui/Toggle';
-import { Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle, XCircle, ArrowLeft, Check } from 'lucide-react';
 import emailService from '../../services/emailService';
 import toast from 'react-hot-toast';
 
-const EmailConfigForm = ({ config, onSubmit, loading }) => {
+const EmailConfigForm = ({ config, onSubmit, onPrevious, loading }) => {
   const [showPass, setShowPass] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [finishRequested, setFinishRequested] = useState(false);
 
   const {
     register,
@@ -64,12 +65,12 @@ const EmailConfigForm = ({ config, onSubmit, loading }) => {
   };
 
   const handleFormSubmit = (data) => {
-    onSubmit({ smtpConfig: data });
+    onSubmit({ smtpConfig: data }, false, finishRequested);
   };
 
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 font-sans">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
           label="SMTP Host"
           required
@@ -86,7 +87,7 @@ const EmailConfigForm = ({ config, onSubmit, loading }) => {
         />
       </div>
 
-      <div className="p-4 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl">
+      <div className="p-4 bg-[var(--bg-surface-alt)] border border-[var(--border)] rounded-sm">
         <Toggle
           checked={secure}
           onChange={(val) => setValue('secure', val)}
@@ -113,7 +114,6 @@ const EmailConfigForm = ({ config, onSubmit, loading }) => {
       <Input
         label="SMTP Password / App Password"
         type={showPass ? 'text' : 'password'}
-        required
         placeholder={config?.isConfigured ? '••••••••' : 'Enter app password'}
         hint="For Gmail: use an App Password (Google Account → Security → App Passwords)"
         error={errors.pass?.message}
@@ -121,15 +121,15 @@ const EmailConfigForm = ({ config, onSubmit, loading }) => {
           <button
             type="button"
             onClick={() => setShowPass((s) => !s)}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
           >
-            {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {showPass ? <EyeOff className="w-4 h-4" strokeWidth={1.5} /> : <Eye className="w-4 h-4" strokeWidth={1.5} />}
           </button>
         }
         {...register('pass')}
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
           label="From Name"
           placeholder="Timetable System"
@@ -149,31 +149,58 @@ const EmailConfigForm = ({ config, onSubmit, loading }) => {
         />
       </div>
 
-      <div className="flex items-center gap-3">
-        <Button type="submit" loading={loading}>
-          Save SMTP Config
-        </Button>
+      <div className="flex items-center justify-between pt-4 border-t border-[var(--border)] flex-wrap gap-3">
         <Button
           type="button"
-          variant="outline"
-          onClick={handleTest}
-          loading={testing}
-          disabled={!config?.isConfigured}
+          variant="ghost"
+          onClick={onPrevious}
+          leftIcon={<ArrowLeft className="w-4 h-4" strokeWidth={1.5} />}
         >
-          Test Connection
+          ← Previous
         </Button>
-        {testResult === 'success' && (
-          <div className="flex items-center gap-1 text-green-600 text-sm">
-            <CheckCircle className="w-4 h-4" />
-            Connected
-          </div>
-        )}
-        {testResult === 'error' && (
-          <div className="flex items-center gap-1 text-red-500 text-sm">
-            <XCircle className="w-4 h-4" />
-            Failed
-          </div>
-        )}
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleTest}
+            loading={testing}
+            disabled={!config?.isConfigured}
+            size="sm"
+          >
+            Test Connection
+          </Button>
+          {testResult === 'success' && (
+            <span className="flex items-center gap-1 text-[var(--success)] text-xs font-medium">
+              <CheckCircle className="w-4 h-4" strokeWidth={1.5} />
+              Connected
+            </span>
+          )}
+          {testResult === 'error' && (
+            <span className="flex items-center gap-1 text-[var(--error)] text-xs font-medium">
+              <XCircle className="w-4 h-4" strokeWidth={1.5} />
+              Failed
+            </span>
+          )}
+
+          <Button
+            type="submit"
+            loading={loading}
+            onClick={() => setFinishRequested(false)}
+          >
+            Save Email Settings
+          </Button>
+
+          <button
+            type="submit"
+            disabled={loading}
+            onClick={() => setFinishRequested(true)}
+            className="px-5 py-2 rounded-sm bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-sans font-medium text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+          >
+            <Check className="w-4 h-4" strokeWidth={2} />
+            <span>Finish Setup</span>
+          </button>
+        </div>
       </div>
     </form>
   );

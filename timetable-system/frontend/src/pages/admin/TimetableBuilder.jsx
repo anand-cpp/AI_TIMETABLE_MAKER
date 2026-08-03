@@ -5,6 +5,7 @@ import Button from '../../components/ui/Button';
 import Select from '../../components/ui/Select';
 import Spinner from '../../components/ui/Spinner';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Breadcrumb from '../../components/ui/Breadcrumb';
 import Tabs from '../../components/ui/Tabs';
 import TimetableGrid from '../../components/timetable/TimetableGrid';
 import EditSlotModal from '../../components/timetable/EditSlotModal';
@@ -19,7 +20,6 @@ import {
   Eye,
   RefreshCw,
 } from 'lucide-react';
-import { cn } from '../../utils/cn';
 
 const TimetableBuilder = () => {
   const [versions, setVersions] = useState([]);
@@ -34,6 +34,7 @@ const TimetableBuilder = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('saved');
 
   // Load versions list
   const loadVersions = useCallback(async () => {
@@ -48,19 +49,35 @@ const TimetableBuilder = () => {
     }
   }, []);
 
-  // Load full version data
+  // Load full version data with localStorage fallback
   const loadVersion = useCallback(async (id) => {
     try {
       setActiveVersionLoading(true);
+      setSaveStatus('saved');
       const res = await timetableService.getVersion(id);
       setActiveVersion(res.data.timetable);
-      // Auto-select first class
+      try {
+        localStorage.setItem(`timetable-cache-${id}`, JSON.stringify(res.data.timetable));
+        localStorage.setItem('latest-timetable-cache', JSON.stringify(res.data.timetable));
+      } catch {}
       const firstClass = res.data.timetable?.classTimetables?.[0];
       if (firstClass && !selectedClassId) {
         setSelectedClassId(firstClass.classId.toString());
       }
     } catch {
-      toast.error('Failed to load timetable version');
+      const cached = localStorage.getItem(`timetable-cache-${id}`) || localStorage.getItem('latest-timetable-cache');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          setActiveVersion(parsed);
+          setSaveStatus('offline');
+          toast.success('Loaded timetable from local cache fallback');
+        } catch {
+          toast.error('Failed to load timetable version');
+        }
+      } else {
+        toast.error('Failed to load timetable version');
+      }
     } finally {
       setActiveVersionLoading(false);
     }
@@ -83,15 +100,21 @@ const TimetableBuilder = () => {
   const handleGenerate = async (options) => {
     try {
       setGenerating(true);
+      setSaveStatus('saving');
       const res = await timetableService.generate(options);
       setLastGenerateResult(res.data.timetable);
       toast.success(`Timetable generated! Score: ${res.data.timetable?.qualityScore?.overall || 0}/100`);
+      try {
+        localStorage.setItem(`timetable-cache-${res.data.timetable._id}`, JSON.stringify(res.data.timetable));
+        localStorage.setItem('latest-timetable-cache', JSON.stringify(res.data.timetable));
+      } catch {}
+      setSaveStatus('saved');
       await loadVersions();
-      // Auto-load newly generated version
       if (res.data.timetable?._id) {
         await loadVersion(res.data.timetable._id);
       }
     } catch (err) {
+      setSaveStatus('error');
       const msg = err.response?.data?.message || 'Generation failed';
       const feasErrors = err.response?.data?.feasibilityErrors;
       if (feasErrors?.length) {
@@ -146,7 +169,48 @@ const TimetableBuilder = () => {
     setEditModalOpen(true);
   };
 
-  // After edit
+  // Handle Drag-and-Drop Slot Swap & Persistence
+  const handleSlotSwap = async (sourceSlot, targetSlot, updatedSlots) => {
+    if (!activeVersion?._id || !selectedClassId) return;
+
+    // Optimistically update local activeVersion state
+    setActiveVersion((prev) => {
+      if (!prev) return prev;
+      const updatedClassTimetables = prev.classTimetables.map((ct) => {
+        if (ct.classId?.toString() === selectedClassId) {
+          return { ...ct, slots: updatedSlots };
+        }
+        return ct;
+      });
+      const updatedObj = { ...prev, classTimetables: updatedClassTimetables };
+      try {
+        localStorage.setItem(`timetable-cache-${prev._id}`, JSON.stringify(updatedObj));
+        localStorage.setItem('latest-timetable-cache', JSON.stringify(updatedObj));
+      } catch {}
+      return updatedObj;
+    });
+
+    if (sourceSlot && targetSlot) {
+      try {
+        setSaveStatus('saving');
+        await timetableService.swapSlots(activeVersion._id, {
+          classId: selectedClassId,
+          slot1: { day: sourceSlot.day, period: sourceSlot.period },
+          slot2: { day: targetSlot.day, period: targetSlot.period },
+        });
+        setSaveStatus('saved');
+      } catch (err) {
+        console.error('Swap save error:', err);
+        if (!navigator.onLine) {
+          setSaveStatus('offline');
+        } else {
+          setSaveStatus('error');
+        }
+      }
+    }
+  };
+
+  // After edit modal update
   const handleSlotUpdated = async () => {
     if (activeVersion?._id) {
       await loadVersion(activeVersion._id);
@@ -167,10 +231,12 @@ const TimetableBuilder = () => {
   }));
 
   return (
-    <div>
+    <div className="space-y-6 font-sans">
+      <Breadcrumb items={[{ label: 'Create Timetable', to: '/admin/timetable' }, { label: 'Quick Timetable' }]} />
+
       <PageHeader
-        title="Timetable Builder"
-        description="Generate, review, edit and publish timetables"
+        title="Quick Timetable Builder"
+        description="Generate, review, drag-and-drop shuffle, and publish timetables"
         action={
           activeVersion?.isAccepted && (
             <div className="flex gap-2">
@@ -178,7 +244,7 @@ const TimetableBuilder = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => timetableService.downloadAllClassesPdf()}
-                leftIcon={<Download className="w-4 h-4" />}
+                leftIcon={<Download className="w-4 h-4" strokeWidth={1.5} />}
               >
                 PDF
               </Button>
@@ -186,7 +252,7 @@ const TimetableBuilder = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => timetableService.downloadAllClassesExcel()}
-                leftIcon={<FileSpreadsheet className="w-4 h-4" />}
+                leftIcon={<FileSpreadsheet className="w-4 h-4" strokeWidth={1.5} />}
               >
                 Excel
               </Button>
@@ -208,8 +274,8 @@ const TimetableBuilder = () => {
             <QualityScoreCard qualityScore={activeVersion.qualityScore} />
           )}
 
-          <div className="glass-panel p-5 rounded-3xl">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] p-5 rounded-md">
+            <h3 className="text-xs font-sans font-semibold uppercase tracking-wider text-[var(--text-label)] mb-3">
               Version History
             </h3>
             <VersionHistory
@@ -224,21 +290,21 @@ const TimetableBuilder = () => {
         </div>
 
         {/* Main timetable area */}
-        <div className="xl:col-span-3">
+        <div className="xl:col-span-3 space-y-4">
           {!activeVersion && !activeVersionLoading && (
-            <div className="glass-panel p-12 text-center rounded-3xl">
-              <Eye className="w-12 h-12 text-slate-400 dark:text-slate-500 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+            <div className="bg-[var(--bg-surface)] border border-[var(--border)] p-12 text-center rounded-md">
+              <Eye className="w-12 h-12 text-[var(--text-muted)] mx-auto mb-4" strokeWidth={1.5} />
+              <h3 className="text-lg font-serif font-normal text-[var(--text-primary)] mb-2">
                 No timetable selected
               </h3>
-              <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
+              <p className="text-xs font-sans text-[var(--text-secondary)] mb-6">
                 Generate a new timetable or select a version from the history
               </p>
               {versions.length > 0 && (
                 <Button
                   variant="outline"
                   onClick={() => loadVersion(versions[0]._id)}
-                  leftIcon={<Eye className="w-4 h-4" />}
+                  leftIcon={<Eye className="w-4 h-4" strokeWidth={1.5} />}
                 >
                   View Latest Version
                 </Button>
@@ -247,39 +313,39 @@ const TimetableBuilder = () => {
           )}
 
           {activeVersionLoading && (
-            <div className="glass-panel p-12 flex items-center justify-center rounded-3xl">
+            <div className="bg-[var(--bg-surface)] border border-[var(--border)] p-12 flex items-center justify-center rounded-md">
               <div className="text-center">
                 <Spinner size="lg" />
-                <p className="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">Loading timetable...</p>
+                <p className="mt-3 text-xs font-sans text-[var(--text-secondary)]">Loading timetable...</p>
               </div>
             </div>
           )}
 
           {activeVersion && !activeVersionLoading && (
-            <div className="glass-panel p-0 rounded-3xl overflow-hidden shadow-xl">
+            <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md overflow-hidden p-6 space-y-4">
               {/* Class selector + actions */}
-              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-4 flex-wrap">
+              <div className="flex items-center justify-between gap-4 flex-wrap pb-4 border-b border-[var(--border)]">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-slate-900 dark:text-white">
+                  <span className="text-lg font-serif font-normal text-[var(--text-primary)]">
                     {activeVersion.label || `Version ${activeVersion.version}`}
                   </span>
                   {activeVersion.isAccepted && (
-                    <span className="px-2.5 py-0.5 text-xs bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 rounded-full font-black">
+                    <span className="px-2.5 py-0.5 text-[10px] bg-[var(--accent-soft)] text-[var(--accent)] rounded-xs font-sans font-semibold uppercase tracking-wider">
                       Published
                     </span>
                   )}
                 </div>
 
-                <div className="ml-auto flex items-center gap-3">
+                <div className="flex items-center gap-3">
                   {classOptions.length > 0 && (
                     <select
                       value={selectedClassId}
                       onChange={(e) => setSelectedClassId(e.target.value)}
-                      className="text-xs font-bold border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
+                      className="text-xs font-sans border border-[var(--border)] bg-transparent text-[var(--text-primary)] rounded-sm px-3 py-2 focus:outline-none focus:border-[var(--accent)] cursor-pointer"
                     >
-                      <option value="" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Select class...</option>
+                      <option value="" className="bg-[var(--bg-surface)]">Select class...</option>
                       {classOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                        <option key={opt.value} value={opt.value} className="bg-[var(--bg-surface)]">
                           {opt.label}
                         </option>
                       ))}
@@ -292,7 +358,7 @@ const TimetableBuilder = () => {
                         variant="ghost"
                         size="sm"
                         onClick={() => timetableService.downloadClassPdf(selectedClassId)}
-                        leftIcon={<Download className="w-3.5 h-3.5" />}
+                        leftIcon={<Download className="w-3.5 h-3.5" strokeWidth={1.5} />}
                       >
                         PDF
                       </Button>
@@ -300,7 +366,7 @@ const TimetableBuilder = () => {
                         variant="ghost"
                         size="sm"
                         onClick={() => timetableService.downloadClassExcel(selectedClassId)}
-                        leftIcon={<FileSpreadsheet className="w-3.5 h-3.5" />}
+                        leftIcon={<FileSpreadsheet className="w-3.5 h-3.5" strokeWidth={1.5} />}
                       >
                         Excel
                       </Button>
@@ -311,26 +377,30 @@ const TimetableBuilder = () => {
 
               {/* Warnings */}
               {activeVersion.warnings?.length > 0 && (
-                <div className="px-6 py-3 bg-amber-50/80 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900/50">
-                  <p className="text-xs font-black text-amber-900 dark:text-amber-200 mb-1">
+                <div className="px-4 py-3 bg-[var(--accent-soft)] border border-[var(--border)] rounded-sm">
+                  <p className="text-xs font-sans font-semibold text-[var(--text-primary)] mb-1">
                     ⚠ {activeVersion.warnings.length} Warning(s)
                   </p>
                   {activeVersion.warnings.slice(0, 2).map((w, i) => (
-                    <p key={i} className="text-xs font-medium text-amber-800 dark:text-amber-300">• {w}</p>
+                    <p key={i} className="text-xs font-sans text-[var(--text-secondary)]">• {w}</p>
                   ))}
                 </div>
               )}
 
-              {/* Grid */}
+              {/* Interactive Grid with DND & Persistence */}
               {currentClassTimetable ? (
                 <TimetableGrid
                   classTimetable={currentClassTimetable}
+                  timetableVersion={activeVersion}
                   onSlotClick={handleSlotClick}
+                  onSlotSwap={handleSlotSwap}
                   selectedSlot={selectedSlot}
+                  saveStatus={saveStatus}
+                  onRetrySave={() => handleSlotSwap(null, null, currentClassTimetable?.slots)}
                   showActions
                 />
               ) : (
-                <div className="p-8 text-center text-slate-400 text-sm font-semibold">
+                <div className="p-8 text-center text-[var(--text-muted)] text-xs font-sans">
                   {selectedClassId
                     ? 'No timetable data for this class'
                     : 'Select a class to view its timetable'}
@@ -339,13 +409,13 @@ const TimetableBuilder = () => {
 
               {/* Unplaced subjects */}
               {activeVersion.unplacedSubjects?.length > 0 && (
-                <div className="px-6 py-4 border-t border-rose-200 dark:border-rose-900/50 bg-rose-50/80 dark:bg-rose-950/40">
-                  <p className="text-xs font-black text-rose-900 dark:text-rose-200 mb-2">
+                <div className="p-4 border border-[var(--error)]/30 bg-[var(--error)]/10 rounded-sm">
+                  <p className="text-xs font-sans font-bold text-[var(--error)] mb-2">
                     ✗ {activeVersion.unplacedSubjects.length} Subject(s) Could Not Be Placed
                   </p>
                   <div className="space-y-1">
                     {activeVersion.unplacedSubjects.map((s, i) => (
-                      <p key={i} className="text-xs font-medium text-rose-800 dark:text-rose-300">
+                      <p key={i} className="text-xs font-sans text-[var(--error)]">
                         • <strong>{s.subjectName}</strong>: {s.reason}
                       </p>
                     ))}
