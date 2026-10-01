@@ -5,25 +5,36 @@ const { sendError } = require('../utils/responseHelpers');
 const pdfService = require('../services/pdfService');
 const excelService = require('../services/excelService');
 
-// ─── Helper: get accepted timetable ──────────────────────────────────────────
-const getAcceptedTimetable = async (res) => {
-  const timetable = await Timetable.findOne({ isAccepted: true });
+// Helper: get timetable version for download (supports query versionId, accepted, or latest fallback)
+const getTimetableForDownload = async (req, res) => {
+  const { versionId } = req.query;
+  let timetable = null;
+
+  if (versionId) {
+    try {
+      timetable = await Timetable.findById(versionId);
+    } catch {}
+  }
   if (!timetable) {
-    sendError(res, 404, 'No accepted timetable found');
+    timetable = await Timetable.findOne({ isAccepted: true });
+  }
+  if (!timetable) {
+    timetable = await Timetable.findOne().sort({ createdAt: -1 });
+  }
+  if (!timetable) {
+    sendError(res, 404, 'No timetable version available for download. Please generate a timetable first.');
     return null;
   }
   return timetable;
 };
 
-// ─── DOWNLOAD Class Timetable PDF ─────────────────────────────────────────────
-// GET /api/download/pdf/class/:classId
+// DOWNLOAD Class Timetable PDF (GET /api/download/pdf/class/:classId)
 const downloadClassPdf = async (req, res) => {
   try {
-    const timetable = await getAcceptedTimetable(res);
+    const timetable = await getTimetableForDownload(req, res);
     if (!timetable) return;
 
-    const cls = await Class.findById(req.params.classId)
-      .populate('departmentId', 'name code');
+    const cls = await Class.findById(req.params.classId).populate('departmentId', 'name code');
     if (!cls) return sendError(res, 404, 'Class not found');
 
     const classTimetable = timetable.classTimetables.find(
@@ -36,7 +47,7 @@ const downloadClassPdf = async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="timetable-${cls.departmentId.code}-S${cls.semester}${cls.section}.pdf"`
+      `attachment; filename="timetable-${cls.departmentId?.code || 'CLASS'}-S${cls.semester}${cls.section}.pdf"`
     );
     res.send(pdfBuffer);
   } catch (error) {
@@ -44,30 +55,27 @@ const downloadClassPdf = async (req, res) => {
   }
 };
 
-// ─── DOWNLOAD All Classes PDF ─────────────────────────────────────────────────
-// GET /api/download/pdf/all-classes
+// DOWNLOAD All Classes PDF (GET /api/download/pdf/all-classes)
 const downloadAllClassesPdf = async (req, res) => {
   try {
-    const timetable = await getAcceptedTimetable(res);
+    const timetable = await getTimetableForDownload(req, res);
     if (!timetable) return;
 
     const classes = await Class.find().populate('departmentId', 'name code');
-
     const pdfBuffer = await pdfService.generateAllClassesPdf(classes, timetable);
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="all-timetables.pdf"');
+    res.setHeader('Content-Disposition', 'attachment; filename="all-classes-timetables.pdf"');
     res.send(pdfBuffer);
   } catch (error) {
     return sendError(res, 500, error.message);
   }
 };
 
-// ─── DOWNLOAD Teacher Timetable PDF ──────────────────────────────────────────
-// GET /api/download/pdf/teacher/:teacherId
+// DOWNLOAD Teacher Timetable PDF (GET /api/download/pdf/teacher/:teacherId)
 const downloadTeacherPdf = async (req, res) => {
   try {
-    const timetable = await getAcceptedTimetable(res);
+    const timetable = await getTimetableForDownload(req, res);
     if (!timetable) return;
 
     const teacher = await Teacher.findById(req.params.teacherId)
@@ -80,7 +88,7 @@ const downloadTeacherPdf = async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="timetable-${teacher.username}.pdf"`
+      `attachment; filename="timetable-${teacher.username || 'teacher'}.pdf"`
     );
     res.send(pdfBuffer);
   } catch (error) {
@@ -88,11 +96,10 @@ const downloadTeacherPdf = async (req, res) => {
   }
 };
 
-// ─── DOWNLOAD All Teachers PDF ────────────────────────────────────────────────
-// GET /api/download/pdf/all-teachers
+// DOWNLOAD All Teachers PDF (GET /api/download/pdf/all-teachers)
 const downloadAllTeachersPdf = async (req, res) => {
   try {
-    const timetable = await getAcceptedTimetable(res);
+    const timetable = await getTimetableForDownload(req, res);
     if (!timetable) return;
 
     const teachers = await Teacher.find({ isActive: true })
@@ -109,15 +116,13 @@ const downloadAllTeachersPdf = async (req, res) => {
   }
 };
 
-// ─── DOWNLOAD Class Timetable Excel ──────────────────────────────────────────
-// GET /api/download/excel/class/:classId
+// DOWNLOAD Class Timetable Excel (GET /api/download/excel/class/:classId)
 const downloadClassExcel = async (req, res) => {
   try {
-    const timetable = await getAcceptedTimetable(res);
+    const timetable = await getTimetableForDownload(req, res);
     if (!timetable) return;
 
-    const cls = await Class.findById(req.params.classId)
-      .populate('departmentId', 'name code');
+    const cls = await Class.findById(req.params.classId).populate('departmentId', 'name code');
     if (!cls) return sendError(res, 404, 'Class not found');
 
     const classTimetable = timetable.classTimetables.find(
@@ -133,7 +138,7 @@ const downloadClassExcel = async (req, res) => {
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="timetable-${cls.departmentId.code}-S${cls.semester}${cls.section}.xlsx"`
+      `attachment; filename="timetable-${cls.departmentId?.code || 'CLASS'}-S${cls.semester}${cls.section}.xlsx"`
     );
     res.send(excelBuffer);
   } catch (error) {
@@ -141,22 +146,20 @@ const downloadClassExcel = async (req, res) => {
   }
 };
 
-// ─── DOWNLOAD All Classes Excel ───────────────────────────────────────────────
-// GET /api/download/excel/all-classes
+// DOWNLOAD All Classes Excel (GET /api/download/excel/all-classes)
 const downloadAllClassesExcel = async (req, res) => {
   try {
-    const timetable = await getAcceptedTimetable(res);
+    const timetable = await getTimetableForDownload(req, res);
     if (!timetable) return;
 
     const classes = await Class.find().populate('departmentId', 'name code');
-
     const excelBuffer = await excelService.generateAllClassesExcel(classes, timetable);
 
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-    res.setHeader('Content-Disposition', 'attachment; filename="all-timetables.xlsx"');
+    res.setHeader('Content-Disposition', 'attachment; filename="all-classes-timetables.xlsx"');
     res.send(excelBuffer);
   } catch (error) {
     return sendError(res, 500, error.message);

@@ -4,8 +4,7 @@ const Teacher = require('../models/Teacher');
 const { sendSuccess, sendError } = require('../utils/responseHelpers');
 const orchestrator = require('../services/engine/orchestrator');
 
-// ─── GET All Timetable Versions ───────────────────────────────────────────────
-// GET /api/timetable/versions
+// GET All Timetable Versions (GET /api/timetable/versions)
 const getVersions = async (req, res) => {
   try {
     const versions = await Timetable.find()
@@ -18,8 +17,7 @@ const getVersions = async (req, res) => {
   }
 };
 
-// ─── GET Single Timetable Version ─────────────────────────────────────────────
-// GET /api/timetable/versions/:id
+// GET Single Timetable Version (GET /api/timetable/versions/:id)
 const getVersion = async (req, res) => {
   try {
     const timetable = await Timetable.findById(req.params.id);
@@ -30,8 +28,7 @@ const getVersion = async (req, res) => {
   }
 };
 
-// ─── GET Accepted Timetable ───────────────────────────────────────────────────
-// GET /api/timetable/accepted
+// GET Accepted Timetable (GET /api/timetable/accepted)
 const getAccepted = async (req, res) => {
   try {
     const timetable = await Timetable.findOne({ isAccepted: true });
@@ -44,13 +41,11 @@ const getAccepted = async (req, res) => {
   }
 };
 
-// ─── GET Teacher's Personal Timetable ────────────────────────────────────────
-// GET /api/timetable/teacher/:teacherId
+// GET Teacher's Personal Timetable (GET /api/timetable/teacher/:teacherId)
 const getTeacherTimetable = async (req, res) => {
   try {
     const { teacherId } = req.params;
 
-    // Teachers can only view their own timetable
     if (req.user.role === 'teacher' && req.user._id.toString() !== teacherId) {
       return sendError(res, 403, 'You can only view your own timetable');
     }
@@ -58,120 +53,184 @@ const getTeacherTimetable = async (req, res) => {
     const teacher = await Teacher.findById(teacherId).select('-password');
     if (!teacher) return sendError(res, 404, 'Teacher not found');
 
-    const timetable = await Timetable.findOne({ isAccepted: true });
+    const timetable = await Timetable.findOne({ isAccepted: true }) || await Timetable.findOne().sort({ version: -1 });
     if (!timetable) {
-      return sendError(res, 404, 'No timetable has been published yet');
+      return sendError(res, 404, 'No timetable available yet');
     }
 
-    // Extract all slots across all classes where this teacher appears
-    const teacherSlots = [];
+    const teacherGrid = {};
 
-    for (const classTT of timetable.classTimetables) {
-      for (const slot of classTT.slots) {
-        if (slot.isBreak) continue;
+    for (const classTT of timetable.classTimetables || []) {
+      for (const slot of classTT.slots || []) {
+        if (slot.isBreak || slot.isEmpty) continue;
 
-        const isInSlot =
-          (slot.teacherIds && slot.teacherIds.some((id) => id.toString() === teacherId)) ||
+        const tIds = (slot.teacherIds || []).map((id) => id.toString());
+        const isAssigned =
+          tIds.includes(teacherId) ||
           (slot.isBatchSplit &&
-            ((slot.batch1?.teacherId && slot.batch1.teacherId.toString() === teacherId) ||
-              (slot.batch2?.teacherId && slot.batch2.teacherId.toString() === teacherId)));
+            (slot.batch1?.teacherId?.toString() === teacherId ||
+              slot.batch2?.teacherId?.toString() === teacherId));
 
-        if (isInSlot) {
-          teacherSlots.push({
-            classId: classTT.classId,
-            className: classTT.className,
-            day: slot.day,
-            period: slot.period,
-            subjectName: slot.subjectName,
-            subjectCode: slot.subjectCode,
-            subjectType: slot.subjectType,
-            roomName: slot.roomName,
-            isLabBlock: slot.isLabBlock,
-            isBatchSplit: slot.isBatchSplit,
-          });
+        if (isAssigned) {
+          const key = `${slot.day}_${slot.period}`;
+          if (!teacherGrid[key]) {
+            teacherGrid[key] = {
+              day: slot.day,
+              period: slot.period,
+              subjectName: slot.subjectName,
+              subjectCode: slot.subjectCode,
+              subjectType: slot.subjectType,
+              className: classTT.className,
+              roomName: slot.roomName,
+              isLabBlock: slot.isLabBlock,
+              isBatchSplit: slot.isBatchSplit,
+            };
+          }
         }
       }
     }
 
     return sendSuccess(res, 200, {
-      teacher: {
-        id: teacher._id,
-        name: teacher.name,
-        username: teacher.username,
-      },
-      slots: teacherSlots,
-      version: timetable.version,
+      teacher,
+      timetable: teacherGrid,
       generatedAt: timetable.generatedAt,
+      version: timetable.version,
     });
   } catch (error) {
     return sendError(res, 500, error.message);
   }
 };
 
-// ─── GENERATE Timetable ───────────────────────────────────────────────────────
-// POST /api/timetable/generate
+// GET Version Edit History (GET /api/timetable/versions/:id/history)
+const getEditHistory = async (req, res) => {
+  try {
+    const timetable = await Timetable.findById(req.params.id).select('version editHistory');
+    if (!timetable) return sendError(res, 404, 'Timetable version not found');
+
+    return sendSuccess(res, 200, { history: timetable.editHistory || [] });
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
+// GET Cross-Dept Teachers
+const getCrossDeptTeachers = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+    const teachers = await Teacher.find({ departmentId: { $ne: departmentId }, isActive: true })
+      .select('-password')
+      .populate('departmentId', 'name code');
+
+    return sendSuccess(res, 200, { crossDeptTeachers: teachers });
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
+// Save Teacher Availability
+const saveTeacherAvailability = async (req, res) => {
+  try {
+    const { teacherId, unavailability, source } = req.body;
+    const teacher = await Teacher.findByIdAndUpdate(
+      teacherId,
+      { $set: { unavailability: unavailability || [], savedSource: source || 'manual' } },
+      { new: true }
+    );
+    return sendSuccess(res, 200, { teacher }, 'Teacher availability saved successfully');
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
+// GENERATE Timetable Version (POST /api/timetable/generate)
 const generateTimetable = async (req, res) => {
   try {
-    const { label } = req.body;
+    const {
+      departmentId,
+      year,
+      semester,
+      section,
+      periodsPerDay,
+      periodDuration,
+      workingDays,
+      teacherDailyLimit,
+      includeSaturday,
+      avoidConsecutiveHard,
+      balanceTeacherLoad,
+      subjectOverrides,
+      teacherAvailability,
+    } = req.body;
 
-    // Get next version number
-    const lastVersion = await Timetable.findOne().sort({ version: -1 }).select('version');
-    const nextVersion = lastVersion ? lastVersion.version + 1 : 1;
+    const options = {
+      departmentId,
+      year,
+      semester,
+      section,
+      periodsPerDay,
+      periodDuration,
+      workingDays,
+      teacherDailyLimit,
+      includeSaturday,
+      avoidConsecutiveHard,
+      balanceTeacherLoad,
+      adminOverrides: { subjectOverrides },
+      teacherAvailability,
+    };
 
-    // Run engine orchestrator with options (departmentId, year, semester, section, teacherAvailability, etc.)
-    const result = await orchestrator.run(req.body);
+    const engineResult = await orchestrator.run(options);
 
-    if (!result.success) {
-      return sendError(res, 400, result.error || 'Timetable generation failed');
+    if (!engineResult.success) {
+      return sendError(res, 400, engineResult.error || 'Generation failed', {
+        feasibilityErrors: engineResult.feasibilityErrors || [],
+        warnings: engineResult.warnings || [],
+      });
     }
 
-    // Save generated timetable
-    const timetable = await Timetable.create({
-      version: nextVersion,
-      label: label || `Version ${nextVersion}`,
+    const latestVersionDoc = await Timetable.findOne().sort({ version: -1 });
+    const nextVersionNumber = latestVersionDoc ? latestVersionDoc.version + 1 : 1;
+
+    const newTimetable = await Timetable.create({
+      version: nextVersionNumber,
+      label: `Version ${nextVersionNumber}`,
       isAccepted: false,
-      classTimetables: result.classTimetables,
-      qualityScore: result.qualityScore,
-      warnings: result.warnings || [],
-      unplacedSubjects: result.unplacedSubjects || [],
-      generationStats: result.generationStats || {},
+      classTimetables: engineResult.classTimetables,
+      qualityScore: engineResult.qualityScore,
+      validationChecks: engineResult.validationChecks || {},
+      autoFillStats: engineResult.autoFillStats || {},
+      warnings: engineResult.warnings || [],
+      unplacedSubjects: engineResult.unplacedSubjects || [],
+      permissionRequests: engineResult.permissionRequests || [],
+      generationStats: engineResult.generationStats || {},
     });
 
     return sendSuccess(
       res,
       201,
       {
-        timetable: {
-          _id: timetable._id,
-          version: timetable.version,
-          label: timetable.label,
-          qualityScore: timetable.qualityScore,
-          warnings: timetable.warnings,
-          unplacedSubjects: timetable.unplacedSubjects,
-          generationStats: timetable.generationStats,
-        },
+        timetable: newTimetable,
+        permissionRequests: engineResult.permissionRequests || [],
+        validationChecks: engineResult.validationChecks || {},
+        autoFillStats: engineResult.autoFillStats || {},
       },
-      'Timetable generated successfully'
+      `Timetable Version ${nextVersionNumber} generated successfully`
     );
   } catch (error) {
+    console.error('❌ Controller generate error:', error);
     return sendError(res, 500, error.message);
   }
 };
 
-// ─── ACCEPT Timetable Version ─────────────────────────────────────────────────
-// PATCH /api/timetable/versions/:id/accept
+// ACCEPT Timetable Version (PATCH /api/timetable/versions/:id/accept)
 const acceptVersion = async (req, res) => {
   try {
-    const timetable = await Timetable.findById(req.params.id);
-    if (!timetable) return sendError(res, 404, 'Timetable version not found');
+    const timetableToAccept = await Timetable.findById(req.params.id);
+    if (!timetableToAccept) return sendError(res, 404, 'Timetable version not found');
 
-    // Un-accept ALL other versions atomically
     await Timetable.updateMany(
       { _id: { $ne: req.params.id } },
       { $set: { isAccepted: false, acceptedAt: null } }
     );
 
-    // Accept this version
     const accepted = await Timetable.findByIdAndUpdate(
       req.params.id,
       { $set: { isAccepted: true, acceptedAt: new Date() } },
@@ -189,8 +248,7 @@ const acceptVersion = async (req, res) => {
   }
 };
 
-// ─── UN-ACCEPT Timetable Version ──────────────────────────────────────────────
-// PATCH /api/timetable/versions/:id/unaccept
+// UN-ACCEPT Timetable Version (PATCH /api/timetable/versions/:id/unaccept)
 const unacceptVersion = async (req, res) => {
   try {
     const timetable = await Timetable.findByIdAndUpdate(
@@ -207,8 +265,23 @@ const unacceptVersion = async (req, res) => {
   }
 };
 
-// ─── DELETE Timetable Version ─────────────────────────────────────────────────
-// DELETE /api/timetable/versions/:id
+// UPDATE Version Label
+const updateVersionLabel = async (req, res) => {
+  try {
+    const { label } = req.body;
+    const timetable = await Timetable.findByIdAndUpdate(
+      req.params.id,
+      { $set: { label } },
+      { new: true }
+    );
+    if (!timetable) return sendError(res, 404, 'Timetable version not found');
+    return sendSuccess(res, 200, { timetable }, 'Label updated successfully');
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
+// DELETE Timetable Version (DELETE /api/timetable/versions/:id)
 const deleteVersion = async (req, res) => {
   try {
     const timetable = await Timetable.findById(req.params.id);
@@ -226,106 +299,50 @@ const deleteVersion = async (req, res) => {
   }
 };
 
-// ─── MANUAL EDIT: Set Slot ────────────────────────────────────────────────────
-// PATCH /api/timetable/versions/:id/edit/set
+// MANUAL EDIT: Set Slot
 const editSetSlot = async (req, res) => {
   try {
     const { classId, day, period, slotData } = req.body;
-
-    if (!classId || !day || !period) {
-      return sendError(res, 400, 'classId, day, and period are required');
-    }
-
     const timetable = await Timetable.findById(req.params.id);
     if (!timetable) return sendError(res, 404, 'Timetable version not found');
 
-    // Find class timetable
-    const classTTIndex = timetable.classTimetables.findIndex(
-      (ct) => ct.classId.toString() === classId
-    );
+    const classTTIndex = timetable.classTimetables.findIndex((ct) => ct.classId.toString() === classId);
     if (classTTIndex === -1) return sendError(res, 404, 'Class not found in timetable');
 
-    // Find slot
     const slotIndex = timetable.classTimetables[classTTIndex].slots.findIndex(
       (s) => s.day === day && s.period === Number(period)
     );
+    if (slotIndex === -1) return sendError(res, 404, 'Slot not found');
 
-    const before = slotIndex !== -1
-      ? { ...timetable.classTimetables[classTTIndex].slots[slotIndex].toObject() }
-      : null;
-
-    // Check if slot is locked
-    if (before && before.isLocked) {
-      return sendError(res, 400, 'This slot is locked and cannot be edited. Unlock it first.');
-    }
-
-    if (slotIndex !== -1) {
-      // Update existing slot - preserve lock status
-      Object.assign(timetable.classTimetables[classTTIndex].slots[slotIndex], {
-        ...slotData,
-        day,
-        period: Number(period),
-        isLocked: before.isLocked,
-      });
-    } else {
-      // Add new slot
-      timetable.classTimetables[classTTIndex].slots.push({
-        day,
-        period: Number(period),
-        ...slotData,
-      });
-    }
-
-    // Record edit history
-    timetable.editHistory.push({
-      action: 'set',
-      classId,
+    timetable.classTimetables[classTTIndex].slots[slotIndex] = {
+      ...timetable.classTimetables[classTTIndex].slots[slotIndex].toObject(),
+      ...slotData,
       day,
       period: Number(period),
-      before,
-      after: slotData,
-      editedBy: req.user?.username || 'admin',
-    });
+    };
 
     await timetable.save();
-
-    return sendSuccess(res, 200, {}, 'Slot updated successfully');
+    return sendSuccess(res, 200, { timetable }, 'Slot updated successfully');
   } catch (error) {
     return sendError(res, 500, error.message);
   }
 };
 
-// ─── MANUAL EDIT: Clear Slot ──────────────────────────────────────────────────
-// PATCH /api/timetable/versions/:id/edit/clear
+// MANUAL EDIT: Clear Slot
 const editClearSlot = async (req, res) => {
   try {
     const { classId, day, period } = req.body;
-
-    if (!classId || !day || !period) {
-      return sendError(res, 400, 'classId, day, and period are required');
-    }
-
     const timetable = await Timetable.findById(req.params.id);
     if (!timetable) return sendError(res, 404, 'Timetable version not found');
 
-    const classTTIndex = timetable.classTimetables.findIndex(
-      (ct) => ct.classId.toString() === classId
-    );
+    const classTTIndex = timetable.classTimetables.findIndex((ct) => ct.classId.toString() === classId);
     if (classTTIndex === -1) return sendError(res, 404, 'Class not found in timetable');
 
     const slotIndex = timetable.classTimetables[classTTIndex].slots.findIndex(
       (s) => s.day === day && s.period === Number(period)
     );
-
     if (slotIndex === -1) return sendError(res, 404, 'Slot not found');
 
-    const before = { ...timetable.classTimetables[classTTIndex].slots[slotIndex].toObject() };
-
-    if (before.isLocked) {
-      return sendError(res, 400, 'This slot is locked. Unlock it first before clearing.');
-    }
-
-    // Clear slot content but keep the slot entry
     timetable.classTimetables[classTTIndex].slots[slotIndex] = {
       day,
       period: Number(period),
@@ -333,11 +350,12 @@ const editClearSlot = async (req, res) => {
       subjectName: '',
       subjectCode: '',
       subjectType: 'empty',
+      isEmpty: true,
       teacherIds: [],
       teacherNames: [],
       roomName: '',
       isLocked: false,
-      isBreak: before.isBreak,
+      isBreak: timetable.classTimetables[classTTIndex].slots[slotIndex].isBreak,
       isLabBlock: false,
       labBlockIndex: 0,
       isBatchSplit: false,
@@ -346,30 +364,56 @@ const editClearSlot = async (req, res) => {
       notes: '',
     };
 
-    timetable.editHistory.push({
-      action: 'clear',
-      classId,
-      day,
-      period: Number(period),
-      before,
-      after: null,
-      editedBy: req.user?.username || 'admin',
-    });
-
     await timetable.save();
-
-    return sendSuccess(res, 200, {}, 'Slot cleared successfully');
+    return sendSuccess(res, 200, { timetable }, 'Slot cleared successfully');
   } catch (error) {
     return sendError(res, 500, error.message);
   }
 };
 
-// ─── MANUAL EDIT: Swap Slots ──────────────────────────────────────────────────
-// PATCH /api/timetable/versions/:id/edit/swap
+// MANUAL EDIT: Lock / Unlock Slot
+const editLockSlot = async (req, res) => {
+  try {
+    const { classId, day, period } = req.body;
+    const timetable = await Timetable.findById(req.params.id);
+    if (!timetable) return sendError(res, 404, 'Timetable version not found');
+
+    const classTTIndex = timetable.classTimetables.findIndex((ct) => ct.classId.toString() === classId);
+    const slotIndex = timetable.classTimetables[classTTIndex].slots.findIndex(
+      (s) => s.day === day && s.period === Number(period)
+    );
+
+    timetable.classTimetables[classTTIndex].slots[slotIndex].isLocked = true;
+    await timetable.save();
+    return sendSuccess(res, 200, { timetable }, 'Slot locked successfully');
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
+const editUnlockSlot = async (req, res) => {
+  try {
+    const { classId, day, period } = req.body;
+    const timetable = await Timetable.findById(req.params.id);
+    if (!timetable) return sendError(res, 404, 'Timetable version not found');
+
+    const classTTIndex = timetable.classTimetables.findIndex((ct) => ct.classId.toString() === classId);
+    const slotIndex = timetable.classTimetables[classTTIndex].slots.findIndex(
+      (s) => s.day === day && s.period === Number(period)
+    );
+
+    timetable.classTimetables[classTTIndex].slots[slotIndex].isLocked = false;
+    await timetable.save();
+    return sendSuccess(res, 200, { timetable }, 'Slot unlocked successfully');
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
+// MANUAL EDIT: Swap Slots (PATCH /api/timetable/versions/:id/edit/swap)
 const editSwapSlots = async (req, res) => {
   try {
     const { classId, slot1, slot2 } = req.body;
-    // slot1, slot2: { day, period }
 
     if (!classId || !slot1 || !slot2) {
       return sendError(res, 400, 'classId, slot1, and slot2 are required');
@@ -396,17 +440,14 @@ const editSwapSlots = async (req, res) => {
       return sendError(res, 404, 'One or both slots not found');
     }
 
-    // Check locks
     if (slots[idx1].isLocked || slots[idx2].isLocked) {
       return sendError(res, 400, 'Cannot swap locked slots. Unlock them first.');
     }
 
-    // Check breaks - cannot swap break slots
     if (slots[idx1].isBreak || slots[idx2].isBreak) {
       return sendError(res, 400, 'Cannot swap break slots');
     }
 
-    // Cannot swap lab slots (labs are consecutive blocks)
     if (slots[idx1].isLabBlock || slots[idx2].isLabBlock) {
       return sendError(res, 400, 'Cannot swap lab block slots individually');
     }
@@ -414,41 +455,29 @@ const editSwapSlots = async (req, res) => {
     const before1 = { ...slots[idx1].toObject() };
     const before2 = { ...slots[idx2].toObject() };
 
-    // Swap subject content, preserve day/period/isBreak
-    const temp = {
-      subjectId: slots[idx1].subjectId,
-      subjectName: slots[idx1].subjectName,
-      subjectCode: slots[idx1].subjectCode,
-      subjectType: slots[idx1].subjectType,
-      teacherIds: slots[idx1].teacherIds,
-      teacherNames: slots[idx1].teacherNames,
-      roomName: slots[idx1].roomName,
-      isElective: slots[idx1].isElective,
-      electiveGroupId: slots[idx1].electiveGroupId,
-      notes: slots[idx1].notes,
-    };
+    // Complete swap of all slot properties while preserving day, period, and _id
+    const temp1 = { ...before1 };
+    delete temp1.day;
+    delete temp1.period;
+    delete temp1._id;
 
-    slots[idx1].subjectId = slots[idx2].subjectId;
-    slots[idx1].subjectName = slots[idx2].subjectName;
-    slots[idx1].subjectCode = slots[idx2].subjectCode;
-    slots[idx1].subjectType = slots[idx2].subjectType;
-    slots[idx1].teacherIds = slots[idx2].teacherIds;
-    slots[idx1].teacherNames = slots[idx2].teacherNames;
-    slots[idx1].roomName = slots[idx2].roomName;
-    slots[idx1].isElective = slots[idx2].isElective;
-    slots[idx1].electiveGroupId = slots[idx2].electiveGroupId;
-    slots[idx1].notes = slots[idx2].notes;
+    const temp2 = { ...before2 };
+    delete temp2.day;
+    delete temp2.period;
+    delete temp2._id;
 
-    slots[idx2].subjectId = temp.subjectId;
-    slots[idx2].subjectName = temp.subjectName;
-    slots[idx2].subjectCode = temp.subjectCode;
-    slots[idx2].subjectType = temp.subjectType;
-    slots[idx2].teacherIds = temp.teacherIds;
-    slots[idx2].teacherNames = temp.teacherNames;
-    slots[idx2].roomName = temp.roomName;
-    slots[idx2].isElective = temp.isElective;
-    slots[idx2].electiveGroupId = temp.electiveGroupId;
-    slots[idx2].notes = temp.notes;
+    const slot1Day = slots[idx1].day;
+    const slot1Period = slots[idx1].period;
+    const slot1Id = slots[idx1]._id;
+
+    const slot2Day = slots[idx2].day;
+    const slot2Period = slots[idx2].period;
+    const slot2Id = slots[idx2]._id;
+
+    slots[idx1] = { _id: slot1Id, day: slot1Day, period: slot1Period, ...temp2 };
+    slots[idx2] = { _id: slot2Id, day: slot2Day, period: slot2Period, ...temp1 };
+
+    timetable.markModified('classTimetables');
 
     timetable.editHistory.push({
       action: 'swap',
@@ -456,244 +485,13 @@ const editSwapSlots = async (req, res) => {
       day: slot1.day,
       period: slot1.period,
       before: { slot1: before1, slot2: before2 },
-      after: { slot1: slots[idx1].toObject(), slot2: slots[idx2].toObject() },
+      after: { slot1: before1, slot2: before2 },
       editedBy: req.user?.username || 'admin',
     });
 
     await timetable.save();
 
-    return sendSuccess(res, 200, {}, 'Slots swapped successfully');
-  } catch (error) {
-    return sendError(res, 500, error.message);
-  }
-};
-
-// ─── MANUAL EDIT: Lock Slot ───────────────────────────────────────────────────
-// PATCH /api/timetable/versions/:id/edit/lock
-const editLockSlot = async (req, res) => {
-  try {
-    const { classId, day, period } = req.body;
-
-    const timetable = await Timetable.findById(req.params.id);
-    if (!timetable) return sendError(res, 404, 'Timetable version not found');
-
-    const classTTIndex = timetable.classTimetables.findIndex(
-      (ct) => ct.classId.toString() === classId
-    );
-    if (classTTIndex === -1) return sendError(res, 404, 'Class not found in timetable');
-
-    const slotIndex = timetable.classTimetables[classTTIndex].slots.findIndex(
-      (s) => s.day === day && s.period === Number(period)
-    );
-    if (slotIndex === -1) return sendError(res, 404, 'Slot not found');
-
-    timetable.classTimetables[classTTIndex].slots[slotIndex].isLocked = true;
-
-    timetable.editHistory.push({
-      action: 'lock',
-      classId,
-      day,
-      period: Number(period),
-      editedBy: req.user?.username || 'admin',
-    });
-
-    await timetable.save();
-
-    return sendSuccess(res, 200, {}, 'Slot locked successfully');
-  } catch (error) {
-    return sendError(res, 500, error.message);
-  }
-};
-
-// ─── MANUAL EDIT: Unlock Slot ─────────────────────────────────────────────────
-// PATCH /api/timetable/versions/:id/edit/unlock
-const editUnlockSlot = async (req, res) => {
-  try {
-    const { classId, day, period } = req.body;
-
-    const timetable = await Timetable.findById(req.params.id);
-    if (!timetable) return sendError(res, 404, 'Timetable version not found');
-
-    const classTTIndex = timetable.classTimetables.findIndex(
-      (ct) => ct.classId.toString() === classId
-    );
-    if (classTTIndex === -1) return sendError(res, 404, 'Class not found in timetable');
-
-    const slotIndex = timetable.classTimetables[classTTIndex].slots.findIndex(
-      (s) => s.day === day && s.period === Number(period)
-    );
-    if (slotIndex === -1) return sendError(res, 404, 'Slot not found');
-
-    timetable.classTimetables[classTTIndex].slots[slotIndex].isLocked = false;
-
-    timetable.editHistory.push({
-      action: 'unlock',
-      classId,
-      day,
-      period: Number(period),
-      editedBy: req.user?.username || 'admin',
-    });
-
-    await timetable.save();
-
-    return sendSuccess(res, 200, {}, 'Slot unlocked successfully');
-  } catch (error) {
-    return sendError(res, 500, error.message);
-  }
-};
-
-// ─── GET Edit History for a Version ──────────────────────────────────────────
-// GET /api/timetable/versions/:id/history
-const getEditHistory = async (req, res) => {
-  try {
-    const timetable = await Timetable.findById(req.params.id).select('editHistory version');
-    if (!timetable) return sendError(res, 404, 'Timetable version not found');
-
-    return sendSuccess(res, 200, {
-      version: timetable.version,
-      editHistory: timetable.editHistory,
-    });
-  } catch (error) {
-    return sendError(res, 500, error.message);
-  }
-};
-
-// ─── UPDATE Version Label ─────────────────────────────────────────────────────
-// PATCH /api/timetable/versions/:id/label
-const updateVersionLabel = async (req, res) => {
-  try {
-    const { label } = req.body;
-    if (!label || !label.trim()) {
-      return sendError(res, 400, 'Label is required');
-    }
-
-    const timetable = await Timetable.findByIdAndUpdate(
-      req.params.id,
-      { $set: { label: label.trim() } },
-      { new: true }
-    ).select('version label isAccepted');
-
-    if (!timetable) return sendError(res, 404, 'Timetable version not found');
-
-    return sendSuccess(res, 200, { timetable }, 'Label updated successfully');
-  } catch (error) {
-    return sendError(res, 500, error.message);
-  }
-};
-
-// ─── GET Cross-Department Teachers for a Department ───────────────────────────
-// GET /api/timetable/cross-dept-teachers/:departmentId
-const getCrossDeptTeachers = async (req, res) => {
-  try {
-    const { departmentId } = req.params;
-    if (!departmentId) return sendError(res, 400, 'Department ID is required');
-
-    const Subject = require('../models/Subject');
-    const Department = require('../models/Department');
-    const TeacherAvailability = require('../models/TeacherAvailability');
-
-    // Find all classes in this department
-    const classes = await Class.find({ departmentId }).select('_id name semester section');
-    const classIds = classes.map((c) => c._id);
-
-    // Find all subjects for these classes
-    const subjects = await Subject.find({ classId: { $in: classIds } })
-      .populate('teachers', 'name username departmentId unavailability')
-      .populate('labDetails.batch1Teacher', 'name username departmentId unavailability')
-      .populate('labDetails.batch2Teacher', 'name username departmentId unavailability')
-      .populate('classId', 'semester section')
-      .lean();
-
-    const teacherMap = {};
-    for (const sub of subjects) {
-      const allTeachers = [
-        ...(sub.teachers || []),
-        ...(sub.labDetails?.batch1Teacher ? [sub.labDetails.batch1Teacher] : []),
-        ...(sub.labDetails?.batch2Teacher ? [sub.labDetails.batch2Teacher] : []),
-      ];
-
-      for (const t of allTeachers) {
-        if (!t || !t._id) continue;
-        const tDeptId = t.departmentId?._id ? t.departmentId._id.toString() : t.departmentId?.toString();
-        if (tDeptId && tDeptId !== departmentId.toString()) {
-          const key = t._id.toString();
-          if (!teacherMap[key]) {
-            teacherMap[key] = {
-              _id: t._id,
-              name: t.name,
-              username: t.username,
-              homeDepartmentId: tDeptId,
-              unavailability: t.unavailability || [],
-              subjects: [],
-            };
-          }
-          teacherMap[key].subjects.push({
-            name: sub.name,
-            code: sub.code,
-            classInfo: `Sem ${sub.classId?.semester} Sec ${sub.classId?.section}`,
-          });
-        }
-      }
-    }
-
-    const crossDeptTeachers = Object.values(teacherMap);
-    const publishedTimetable = await Timetable.findOne({ isAccepted: true }).lean();
-
-    for (const t of crossDeptTeachers) {
-      if (t.homeDepartmentId) {
-        const homeDept = await Department.findById(t.homeDepartmentId).select('name code').lean();
-        t.homeDepartmentName = homeDept ? homeDept.name : 'Other Department';
-        t.homeDepartmentCode = homeDept ? homeDept.code : '';
-      }
-
-      const savedAvail = await TeacherAvailability.findOne({ teacherId: t._id, departmentId }).lean();
-      if (savedAvail && savedAvail.unavailability) {
-        t.savedUnavailability = savedAvail.unavailability;
-        t.savedSource = savedAvail.source;
-      }
-
-      const publishedBusySlots = [];
-      if (publishedTimetable) {
-        for (const classTT of publishedTimetable.classTimetables) {
-          for (const slot of classTT.slots) {
-            if (slot.isBreak) continue;
-            const isInSlot =
-              (slot.teacherIds && slot.teacherIds.some((id) => id.toString() === t._id.toString())) ||
-              (slot.isBatchSplit &&
-                ((slot.batch1?.teacherId && slot.batch1.teacherId.toString() === t._id.toString()) ||
-                  (slot.batch2?.teacherId && slot.batch2.teacherId.toString() === t._id.toString())));
-            if (isInSlot) {
-              publishedBusySlots.push({ day: slot.day, period: slot.period });
-            }
-          }
-        }
-      }
-      t.publishedBusySlots = publishedBusySlots;
-    }
-
-    return sendSuccess(res, 200, { crossDeptTeachers });
-  } catch (error) {
-    return sendError(res, 500, error.message);
-  }
-};
-
-// ─── SAVE Teacher Availability for Department ───────────────────────────
-// POST /api/timetable/teacher-availability
-const saveTeacherAvailability = async (req, res) => {
-  try {
-    const { teacherId, departmentId, unavailability, source } = req.body;
-    if (!teacherId || !departmentId) {
-      return sendError(res, 400, 'teacherId and departmentId are required');
-    }
-
-    const TeacherAvailability = require('../models/TeacherAvailability');
-    const record = await TeacherAvailability.findOneAndUpdate(
-      { teacherId, departmentId },
-      { unavailability, source: source || 'manual' },
-      { upsert: true, new: true }
-    );
-
-    return sendSuccess(res, 200, { record }, 'Teacher availability saved successfully');
+    return sendSuccess(res, 200, { timetable }, 'Slots swapped successfully');
   } catch (error) {
     return sendError(res, 500, error.message);
   }
@@ -704,17 +502,17 @@ module.exports = {
   getVersion,
   getAccepted,
   getTeacherTimetable,
+  getEditHistory,
+  getCrossDeptTeachers,
+  saveTeacherAvailability,
   generateTimetable,
   acceptVersion,
   unacceptVersion,
+  updateVersionLabel,
   deleteVersion,
   editSetSlot,
   editClearSlot,
-  editSwapSlots,
   editLockSlot,
   editUnlockSlot,
-  getEditHistory,
-  updateVersionLabel,
-  getCrossDeptTeachers,
-  saveTeacherAvailability,
+  editSwapSlots,
 };

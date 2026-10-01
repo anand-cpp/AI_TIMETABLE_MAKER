@@ -1,10 +1,10 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 // Lab details sub-schema
 const labDetailsSchema = new mongoose.Schema(
   {
     roomName: { type: String, trim: true, default: '' },
-    duration: { type: Number, enum: [2, 3], default: 2 },
+    duration: { type: Number, enum: [2, 3, 4], default: 2 },
     isBatchSplit: { type: Boolean, default: false },
     batch1Teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', default: null },
     batch2Teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', default: null },

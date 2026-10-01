@@ -7,6 +7,7 @@ import Breadcrumb from '../../components/ui/Breadcrumb';
 import HelpTooltip from '../../components/ui/HelpTooltip';
 import Spinner from '../../components/ui/Spinner';
 import TimetableGrid from '../../components/timetable/TimetableGrid';
+import CustomClassSelector from '../../components/timetable/CustomClassSelector';
 import departmentService from '../../services/departmentService';
 import timetableService from '../../services/timetableService';
 import api from '../../services/api';
@@ -586,7 +587,7 @@ const YearTimetable = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => timetableService.downloadAllClassesPdf()}
+                    onClick={() => timetableService.downloadAllClassesPdf(generatedResult._id)}
                     leftIcon={<Download className="w-4 h-4" strokeWidth={1.5} />}
                   >
                     PDF
@@ -594,7 +595,7 @@ const YearTimetable = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => timetableService.downloadAllClassesExcel()}
+                    onClick={() => timetableService.downloadAllClassesExcel(generatedResult._id)}
                     leftIcon={<FileSpreadsheet className="w-4 h-4" strokeWidth={1.5} />}
                   >
                     Excel
@@ -604,17 +605,12 @@ const YearTimetable = () => {
 
               <div className="flex items-center gap-3">
                 <label className="text-xs font-sans font-semibold text-[var(--text-primary)]">Select Class View:</label>
-                <select
+                <CustomClassSelector
+                  options={generatedResult.classTimetables?.map((ct) => ({ value: ct.classId, label: ct.className })) || []}
                   value={selectedClassId}
-                  onChange={(e) => setSelectedClassId(e.target.value)}
-                  className="px-3 py-1.5 text-xs bg-transparent border border-[var(--border)] rounded-sm text-[var(--text-primary)] cursor-pointer"
-                >
-                  {generatedResult.classTimetables?.map((ct) => (
-                    <option key={ct.classId} value={ct.classId} className="bg-[var(--bg-surface)]">
-                      {ct.className}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedClassId}
+                  placeholder="Select Class..."
+                />
               </div>
 
               {currentClassTT ? (

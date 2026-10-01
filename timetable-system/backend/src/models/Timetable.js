@@ -8,7 +8,7 @@ const slotSchema = new mongoose.Schema(
     subjectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subject', default: null },
     subjectName: { type: String, default: '' },
     subjectCode: { type: String, default: '' },
-    subjectType: { type: String, enum: ['theory', 'lab', 'elective', 'break', 'empty'], default: 'empty' },
+    subjectType: { type: String, enum: ['theory', 'lab', 'elective', 'break', 'empty', 'autofill'], default: 'empty' },
     teacherIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' }],
     teacherNames: [{ type: String }],
     roomName: { type: String, default: '' },

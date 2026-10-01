@@ -1,6 +1,7 @@
 const Class = require('../../models/Class');
 const Subject = require('../../models/Subject');
 const Teacher = require('../../models/Teacher');
+const Department = require('../../models/Department');
 const CollegeSettings = require('../../models/CollegeSettings');
 const { DEFAULT_SETTINGS } = require('../../config/constants');
 const { getTeachingPeriods } = require('../../utils/timeHelpers');

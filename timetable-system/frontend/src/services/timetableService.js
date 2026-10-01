@@ -80,29 +80,35 @@ const timetableService = {
     return res.data;
   },
 
-  // Downloads
-  downloadClassPdf: (classId) => {
-    window.open(`${import.meta.env.VITE_API_URL}/download/pdf/class/${classId}`, '_blank');
+  // Downloads (Safe relative & full URL helpers)
+  downloadClassPdf: (classId, versionId) => {
+    const query = versionId ? `?versionId=${versionId}` : '';
+    window.open(`/api/download/pdf/class/${classId}${query}`, '_blank');
   },
 
-  downloadAllClassesPdf: () => {
-    window.open(`${import.meta.env.VITE_API_URL}/download/pdf/all-classes`, '_blank');
+  downloadAllClassesPdf: (versionId) => {
+    const query = versionId ? `?versionId=${versionId}` : '';
+    window.open(`/api/download/pdf/all-classes${query}`, '_blank');
   },
 
-  downloadTeacherPdf: (teacherId) => {
-    window.open(`${import.meta.env.VITE_API_URL}/download/pdf/teacher/${teacherId}`, '_blank');
+  downloadTeacherPdf: (teacherId, versionId) => {
+    const query = versionId ? `?versionId=${versionId}` : '';
+    window.open(`/api/download/pdf/teacher/${teacherId}${query}`, '_blank');
   },
 
-  downloadAllTeachersPdf: () => {
-    window.open(`${import.meta.env.VITE_API_URL}/download/pdf/all-teachers`, '_blank');
+  downloadAllTeachersPdf: (versionId) => {
+    const query = versionId ? `?versionId=${versionId}` : '';
+    window.open(`/api/download/pdf/all-teachers${query}`, '_blank');
   },
 
-  downloadClassExcel: (classId) => {
-    window.open(`${import.meta.env.VITE_API_URL}/download/excel/class/${classId}`, '_blank');
+  downloadClassExcel: (classId, versionId) => {
+    const query = versionId ? `?versionId=${versionId}` : '';
+    window.open(`/api/download/excel/class/${classId}${query}`, '_blank');
   },
 
-  downloadAllClassesExcel: () => {
-    window.open(`${import.meta.env.VITE_API_URL}/download/excel/all-classes`, '_blank');
+  downloadAllClassesExcel: (versionId) => {
+    const query = versionId ? `?versionId=${versionId}` : '';
+    window.open(`/api/download/excel/all-classes${query}`, '_blank');
   },
 };
 

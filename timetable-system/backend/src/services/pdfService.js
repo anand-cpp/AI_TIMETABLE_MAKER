@@ -1,5 +1,5 @@
 const { jsPDF } = require('jspdf');
-require('jspdf-autotable');
+const autoTable = require('jspdf-autotable').default || require('jspdf-autotable');
 
 /**
  * PDF Service
@@ -92,7 +92,7 @@ const generateClassPdf = async (cls, classTimetable, timetable) => {
   const head = [['Day', ...periodNumbers.map((p) => `P${p}`)]];
   const body = buildTableData(classTimetable, periodNumbers);
 
-  doc.autoTable({
+  autoTable(doc, {
     head,
     body,
     startY: 32,
@@ -173,7 +173,7 @@ const generateAllClassesPdf = async (classes, timetable) => {
     const head = [['Day', ...periodNumbers.map((p) => `P${p}`)]];
     const body = buildTableData(classTT, periodNumbers);
 
-    doc.autoTable({
+    autoTable(doc, {
       head,
       body,
       startY: 26,
@@ -257,7 +257,7 @@ const generateTeacherPdf = async (teacher, timetable) => {
     return row;
   });
 
-  doc.autoTable({
+  autoTable(doc, {
     head,
     body,
     startY: 32,
@@ -330,7 +330,7 @@ const generateAllTeachersPdf = async (teachers, timetable) => {
       return row;
     });
 
-    doc.autoTable({
+    autoTable(doc, {
       head,
       body,
       startY: 30,

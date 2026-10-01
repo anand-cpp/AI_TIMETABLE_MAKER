@@ -23,3 +23,7 @@ uploads/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Generated knowledge-graph artifacts
+graphify-out/
+**/graphify-out/

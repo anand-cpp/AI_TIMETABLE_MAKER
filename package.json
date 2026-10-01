@@ -1,0 +1,13 @@
+{
+  "name": "ai-timetable-maker",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n \"backend,frontend\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm --prefix timetable-system/backend run dev",
+    "dev:frontend": "npm --prefix timetable-system/frontend run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4"
+  }
+}

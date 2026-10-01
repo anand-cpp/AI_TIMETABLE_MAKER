@@ -73,6 +73,7 @@ app.use('/api/email', emailRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/download', downloadRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api/overrides', require('./routes/overrides'));
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

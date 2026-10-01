@@ -58,6 +58,20 @@ html.dark {
   --dedication-gold: #DBC28A;
 }
 
+html.dark select,
+html.dark option,
+html.dark optgroup {
+  background-color: #161613 !important;
+  color: #EDE8D9 !important;
+}
+
+html.dark option:hover,
+html.dark option:focus,
+html.dark option:checked {
+  background-color: #24201A !important;
+  color: #EDE8D9 !important;
+}
+
 @layer base {
   html {
     @apply antialiased;
@@ -243,4 +257,39 @@ html.dark {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* Dropdown text visibility fix for Dark and White Modes */
+select, select.custom-native-class-select {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+
+/* Dark Mode Option & Optgroup Styling */
+html.dark select option,
+.dark select option {
+  background-color: #161613 !important;
+  color: #EDE8D9 !important;
+}
+html.dark select optgroup,
+.dark select optgroup {
+  background-color: #1E1E1A !important;
+  color: #A19B88 !important;
+  font-weight: 700 !important;
+}
+
+/* Light / White Mode Option & Optgroup Styling */
+html.light select option,
+html:not(.dark) select option,
+:root:not(.dark) select option {
+  background-color: #FFFFFF !important;
+  color: #1A1A1A !important;
+}
+html.light select optgroup,
+html:not(.dark) select optgroup,
+:root:not(.dark) select optgroup {
+  background-color: #F2EFE8 !important;
+  color: #5C5C5C !important;
+  font-weight: 700 !important;
 }

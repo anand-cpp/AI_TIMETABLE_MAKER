@@ -104,6 +104,23 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadStats();
+
+    const handleKeyDown = async (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        try {
+          toast.loading('Dev Seed: Populating KTU dataset...', { id: 'dev-seed' });
+          const { seedKTUDummyData } = await import('../../data/seedDummyData');
+          await seedKTUDummyData();
+          toast.success('Dev Seed Complete!', { id: 'dev-seed' });
+          loadStats();
+        } catch (err) {
+          toast.error('Dev Seed Failed', { id: 'dev-seed' });
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleResetExecute = async () => {

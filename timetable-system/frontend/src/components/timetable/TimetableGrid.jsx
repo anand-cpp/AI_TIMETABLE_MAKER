@@ -17,6 +17,8 @@ import { cn } from '../../utils/cn';
 import { dayShort } from '../../utils/formatters';
 import { checkSlotConflict } from '../../utils/conflictChecker';
 import { RotateCcw, RotateCw, AlertTriangle } from 'lucide-react';
+import LabUtilizationReport from './LabUtilizationReport';
+import TimetableLegend from './TimetableLegend';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
@@ -64,24 +66,19 @@ const TimetableGrid = ({
     return classTimetable?.slots || [];
   }, [classTimetable?.slots, history, historyIndex]);
 
-  // Build slot map: day -> period -> slot
+  // Build slot map: day -> period -> slot (mapping break to 3.5 so LUNCH appears between P3 and P4)
   const slotMap = useMemo(() => {
     const map = {};
     for (const slot of currentSlots) {
       if (!map[slot.day]) map[slot.day] = {};
-      map[slot.day][slot.period] = slot;
+      const key = (slot.isBreak || slot.period === 0) ? 3.5 : slot.period;
+      map[slot.day][key] = slot;
     }
     return map;
   }, [currentSlots]);
 
-  // Get all unique period numbers sorted
-  const periods = useMemo(() => {
-    const pSet = new Set();
-    for (const slot of currentSlots) {
-      pSet.add(slot.period);
-    }
-    return [...pSet].sort((a, b) => a - b);
-  }, [currentSlots]);
+  // Fixed 6-period + Lunch layout order: P1, P2, P3, LUNCH (3.5), P4, P5, P6
+  const periods = useMemo(() => [1, 2, 3, 3.5, 4, 5, 6], []);
 
   // Handle Drag Start
   const handleDragStart = (event) => {
@@ -92,43 +89,96 @@ const TimetableGrid = ({
   };
 
   // Execute actual slot swap in state and notify parent
-  const executeSwap = useCallback((sourceSlot, targetSlot) => {
+  const executeSwap = useCallback(async (sourceSlot, targetSlot) => {
+    if (!sourceSlot || !targetSlot) return;
+
+    if (sourceSlot.isBreak || targetSlot.isBreak) {
+      toast.error('Cannot swap break slots');
+      return;
+    }
+
+    if (sourceSlot.isLabBlock || targetSlot.isLabBlock) {
+      toast.error('Lab blocks must be scheduled as a complete 3-period lab session', { icon: '🧪' });
+      return;
+    }
+
+    const srcDay = sourceSlot.day;
+    const srcPeriod = sourceSlot.period;
+    const dstDay = targetSlot.day;
+    const dstPeriod = targetSlot.period;
+
+    if (process.env.NODE_ENV !== 'production' || window._DEBUG_DND) {
+      console.group('🔍 DRAG END / SWAP DIAGNOSTIC');
+      console.log('1. SOURCE (dragged):', { day: srcDay, period: srcPeriod, slot: sourceSlot });
+      console.log('2. TARGET (over):', { day: dstDay, period: dstPeriod, slot: targetSlot });
+    }
+
     // Deep clone array to guarantee immutability & React re-render
-    const updatedSlots = JSON.parse(JSON.stringify(currentSlots)).map((s) => {
-      if (s.day === sourceSlot.day && s.period === sourceSlot.period) {
+    const clonedSlots = JSON.parse(JSON.stringify(currentSlots));
+
+    const originalSrc = clonedSlots.find((s) => s.day === srcDay && s.period === srcPeriod) || sourceSlot;
+    const originalDst = clonedSlots.find((s) => s.day === dstDay && s.period === dstPeriod) || targetSlot;
+
+    if (process.env.NODE_ENV !== 'production' || window._DEBUG_DND) {
+      console.log('3. BEFORE SWAP CONTENT:', {
+        source: originalSrc,
+        target: originalDst,
+        sameReference: originalSrc === originalDst,
+      });
+    }
+
+    // Capture frozen copy of contents (excluding day & period coordinates)
+    const capturedSrcContent = { ...originalSrc };
+    delete capturedSrcContent.day;
+    delete capturedSrcContent.period;
+
+    const capturedDstContent = { ...originalDst };
+    delete capturedDstContent.day;
+    delete capturedDstContent.period;
+
+    // Apply swapped contents
+    const updatedSlots = clonedSlots.map((s) => {
+      if (s.day === srcDay && s.period === srcPeriod) {
         return {
           ...s,
-          subjectId: targetSlot.subjectId || null,
-          subjectName: targetSlot.subjectName || '',
-          subjectCode: targetSlot.subjectCode || '',
-          subjectType: targetSlot.subjectType || 'empty',
-          teacherIds: targetSlot.teacherIds || [],
-          teacherNames: targetSlot.teacherNames || [],
-          roomName: targetSlot.roomName || '',
-          isEmpty: targetSlot.isEmpty ?? true,
-          isBatchSplit: targetSlot.isBatchSplit ?? false,
-          batch1: targetSlot.batch1 || null,
-          batch2: targetSlot.batch2 || null,
+          ...capturedDstContent,
+          day: srcDay,
+          period: srcPeriod,
         };
       }
-      if (s.day === targetSlot.day && s.period === targetSlot.period) {
+      if (s.day === dstDay && s.period === dstPeriod) {
         return {
           ...s,
-          subjectId: sourceSlot.subjectId || null,
-          subjectName: sourceSlot.subjectName || '',
-          subjectCode: sourceSlot.subjectCode || '',
-          subjectType: sourceSlot.subjectType || 'empty',
-          teacherIds: sourceSlot.teacherIds || [],
-          teacherNames: sourceSlot.teacherNames || [],
-          roomName: sourceSlot.roomName || '',
-          isEmpty: sourceSlot.isEmpty ?? true,
-          isBatchSplit: sourceSlot.isBatchSplit ?? false,
-          batch1: sourceSlot.batch1 || null,
-          batch2: sourceSlot.batch2 || null,
+          ...capturedSrcContent,
+          day: dstDay,
+          period: dstPeriod,
         };
       }
       return s;
     });
+
+    const newSrc = updatedSlots.find((s) => s.day === srcDay && s.period === srcPeriod);
+    const newDst = updatedSlots.find((s) => s.day === dstDay && s.period === dstPeriod);
+
+    if (process.env.NODE_ENV !== 'production' || window._DEBUG_DND) {
+      console.log('4. AFTER SWAP CONTENT:', {
+        newSource: newSrc,
+        newTarget: newDst,
+      });
+      console.groupEnd();
+    }
+
+    // Validation check: ensure swap produced non-empty state if either original was non-empty
+    const isSrcEmpty = !newSrc || newSrc.isEmpty || newSrc.subjectType === 'empty';
+    const isDstEmpty = !newDst || newDst.isEmpty || newDst.subjectType === 'empty';
+    const wasSrcFilled = originalSrc && !originalSrc.isEmpty && originalSrc.subjectType !== 'empty';
+    const wasDstFilled = originalDst && !originalDst.isEmpty && originalDst.subjectType !== 'empty';
+
+    if (isSrcEmpty && isDstEmpty && (wasSrcFilled || wasDstFilled)) {
+      console.error('❌ CRITICAL SWAP BUG DETECTED: Both cells empty after swap!', { originalSrc, originalDst, newSrc, newDst });
+      toast.error('Swap aborted: data loss detected');
+      return;
+    }
 
     // Update local history stack
     const newHistory = history.slice(0, historyIndex + 1);
@@ -136,10 +186,9 @@ const TimetableGrid = ({
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
 
-    // Trigger parent callback
+    // Call parent handler
     onSlotSwap?.(sourceSlot, targetSlot, updatedSlots);
 
-    // Toast feedback
     toast.success('Period moved ↺ Undo available', {
       duration: 3000,
       icon: '🔄',
@@ -284,23 +333,20 @@ const TimetableGrid = ({
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="bg-[var(--bg-surface-alt)] border-b border-[var(--border)]">
-                <th className="border border-[var(--border)] px-3 py-2.5 text-left text-xs font-sans font-semibold text-[var(--text-primary)] w-20 sticky left-0 bg-[var(--bg-surface-alt)] z-10 uppercase tracking-wider">
+                <th className="border border-[var(--border)] px-3 py-2.5 text-left text-xs font-sans font-semibold text-[var(--text-primary)] min-w-[100px] w-28 sticky left-0 bg-[var(--bg-surface-alt)] z-20 uppercase tracking-wider shadow-sm">
                   Day
                 </th>
                 {periods.map((period) => {
-                  const isBreakPeriod = DAYS.some((day) => {
-                    const slot = slotMap[day]?.[period];
-                    return slot?.isBreak;
-                  });
+                  const isBreakPeriod = period === 3.5;
                   return (
                     <th
                       key={period}
                       className={cn(
-                        'border border-[var(--border)] px-2 py-2.5 text-center font-sans font-semibold text-[var(--text-primary)] min-w-[100px] uppercase tracking-wider',
+                        'border border-[var(--border)] px-2 py-2.5 text-center font-sans font-semibold text-[var(--text-primary)] min-w-[110px] uppercase tracking-wider',
                         isBreakPeriod && 'bg-[var(--bg-surface-alt)] text-[var(--text-muted)]'
                       )}
                     >
-                      {isBreakPeriod ? '—' : `P${period}`}
+                      {isBreakPeriod ? 'LUNCH' : `P${period}`}
                     </th>
                   );
                 })}
@@ -309,7 +355,7 @@ const TimetableGrid = ({
             <tbody>
               {DAYS.map((day) => (
                 <tr key={day} className="border-b border-[var(--border)]">
-                  <td className="border border-[var(--border)] px-3 py-2 font-sans font-semibold text-[var(--text-primary)] sticky left-0 bg-[var(--bg-surface)] z-10 text-xs">
+                  <td className="border border-[var(--border)] px-3 py-2 font-sans font-semibold text-[var(--text-primary)] sticky left-0 bg-[var(--bg-surface)] z-20 text-xs min-w-[100px] w-28 shadow-sm">
                     <span className="hidden sm:block">{day}</span>
                     <span className="block sm:hidden">{dayShort(day)}</span>
                   </td>
@@ -343,6 +389,15 @@ const TimetableGrid = ({
             </div>
           ) : null}
         </DragOverlay>
+
+        {/* Grid Legend */}
+        <TimetableLegend />
+
+        {/* Lab Utilization Report */}
+        <LabUtilizationReport
+          timetableVersion={timetableVersion}
+          classTimetables={[classTimetable]}
+        />
 
         {/* Conflict Warning Modal */}
         <Modal

@@ -2,23 +2,9 @@ const { crossesBreak } = require('../../utils/timeHelpers');
 
 /**
  * Constraint Validator
- * Used during generation and after manual edits
- * Checks hard constraints on a given timetable grid state
- *
- * grid structure:
- * {
- *   [classId]: {
- *     [day]: {
- *       [period]: slotObject
- *     }
- *   }
- * }
+ * Checks hard constraints & 100% grid slot utilization on a given timetable grid state
  */
 
-/**
- * Check all hard constraints on the full grid
- * Returns { valid: bool, violations: [] }
- */
 const validateGrid = (grid, data) => {
   const violations = [];
   const {
@@ -26,22 +12,18 @@ const validateGrid = (grid, data) => {
     periodsPerDayMap,
     breakPeriodsPerDayMap,
     settings,
-    timeline,
-    fridayTimeline,
     teacherMap,
+    adminOverrides = {},
   } = data;
 
-  // Build teacher schedule map for conflict detection
-  // teacherId -> { day -> [periods] }
-  const teacherSchedule = {};
+  const teacherDailyLimitOverrides = adminOverrides.teacherDailyLimitOverrides || {};
+  const teacherUnavailabilityOverrides = adminOverrides.teacherUnavailabilityOverrides || [];
 
-  // Build lab room schedule map for conflict detection
-  // roomName -> { day -> [periods] }
+  const teacherSchedule = {};
   const labRoomSchedule = {};
 
   for (const [classId, dayMap] of Object.entries(grid)) {
     for (const [day, periodMap] of Object.entries(dayMap)) {
-      const teachingPeriods = periodsPerDayMap[day] || [];
       const breakPeriods = breakPeriodsPerDayMap[day] || [];
 
       for (const [periodStr, slot] of Object.entries(periodMap)) {
@@ -49,7 +31,7 @@ const validateGrid = (grid, data) => {
 
         if (!slot || slot.isEmpty || slot.isBreak) continue;
 
-        // ── 1. Slot must not be in a break period ─────────────────────────
+        // 1. Break period check
         if (breakPeriods.includes(period)) {
           violations.push({
             type: 'BREAK_SLOT_USED',
@@ -60,9 +42,8 @@ const validateGrid = (grid, data) => {
           });
         }
 
-        // ── 2. Teacher double-booking check ───────────────────────────────
+        // 2. Teacher double-booking check
         const teacherIds = [];
-
         if (slot.teacherIds && slot.teacherIds.length > 0) {
           slot.teacherIds.forEach((id) => teacherIds.push(id.toString()));
         }
@@ -77,36 +58,44 @@ const validateGrid = (grid, data) => {
 
           if (teacherSchedule[teacherId][day].includes(period)) {
             const teacher = teacherMap[teacherId];
-            violations.push({
-              type: 'TEACHER_DOUBLE_BOOKED',
-              message: `Teacher ${teacher?.name || teacherId} is double-booked on ${day} period ${period}`,
-              teacherId,
-              day,
-              period,
-            });
-          } else {
-            teacherSchedule[teacherId][day].push(period);
-          }
-
-          // ── 3. Teacher unavailability check ───────────────────────────
-          const teacher = teacherMap[teacherId];
-          if (teacher && teacher.unavailability) {
-            const isUnavailable = teacher.unavailability.some(
-              (u) => u.day === day && u.period === period
-            );
-            if (isUnavailable) {
+            if (!slot.isOverride) {
               violations.push({
-                type: 'TEACHER_UNAVAILABLE',
-                message: `Teacher ${teacher.name} is unavailable on ${day} period ${period}`,
+                type: 'TEACHER_DOUBLE_BOOKED',
+                message: `Teacher ${teacher?.name || teacherId} is double-booked on ${day} period ${period}`,
                 teacherId,
                 day,
                 period,
               });
             }
+          } else {
+            teacherSchedule[teacherId][day].push(period);
+          }
+
+          // 3. Teacher unavailability check
+          const teacher = teacherMap[teacherId];
+          if (teacher && teacher.unavailability) {
+            const isIgnoredUnavail = teacherUnavailabilityOverrides.some(
+              (u) => (u.teacherId === teacherId || u.teacherName === teacher.name) && u.day === day && u.period === period
+            );
+
+            if (!isIgnoredUnavail) {
+              const isUnavailable = teacher.unavailability.some(
+                (u) => u.day === day && u.period === period
+              );
+              if (isUnavailable) {
+                violations.push({
+                  type: 'TEACHER_UNAVAILABLE',
+                  message: `Teacher ${teacher.name} is unavailable on ${day} period ${period}`,
+                  teacherId,
+                  day,
+                  period,
+                });
+              }
+            }
           }
         }
 
-        // ── 4. Lab room conflict check ─────────────────────────────────
+        // 4. Lab room conflict check
         const roomsToCheck = [];
         if (slot.roomName && slot.subjectType === 'lab') {
           roomsToCheck.push(slot.roomName);
@@ -122,36 +111,43 @@ const validateGrid = (grid, data) => {
           if (!labRoomSchedule[room][day]) labRoomSchedule[room][day] = [];
 
           if (labRoomSchedule[room][day].includes(period)) {
-            violations.push({
-              type: 'LAB_ROOM_CONFLICT',
-              message: `Lab room '${room}' is used by multiple classes on ${day} period ${period}`,
-              room,
-              day,
-              period,
-            });
+            if (!slot.isOverride) {
+              violations.push({
+                type: 'LAB_ROOM_CONFLICT',
+                message: `Lab room '${room}' is used by multiple classes on ${day} period ${period}`,
+                room,
+                day,
+                period,
+              });
+            }
           } else {
             labRoomSchedule[room][day].push(period);
           }
         }
       }
     }
+  }
 
-    // ── 5. Teacher daily period limit check ──────────────────────────────
-    for (const teacherId of Object.keys(teacherSchedule)) {
-      const teacher = teacherMap[teacherId];
-      const dailyLimit = teacher?.maxPeriodsPerDay || settings.teacherDailyLimit || 5;
+  // 5. Teacher daily period limit check
+  for (const teacherId of Object.keys(teacherSchedule)) {
+    const teacher = teacherMap[teacherId];
+    const defaultLimit = teacher?.maxPeriodsPerDay || settings.teacherDailyLimit || 5;
 
-      for (const [day, periods] of Object.entries(teacherSchedule[teacherId] || {})) {
-        if (periods.length > dailyLimit) {
-          violations.push({
-            type: 'TEACHER_DAILY_LIMIT_EXCEEDED',
-            message: `Teacher ${teacher?.name || teacherId} has ${periods.length} periods on ${day}, exceeding limit of ${dailyLimit}`,
-            teacherId,
-            day,
-            periodsCount: periods.length,
-            limit: dailyLimit,
-          });
-        }
+    for (const [day, periods] of Object.entries(teacherSchedule[teacherId] || {})) {
+      const customLimit =
+        teacherDailyLimitOverrides[teacherId]?.[day] ||
+        (teacher && teacherDailyLimitOverrides[teacher.name]?.[day]) ||
+        defaultLimit;
+
+      if (periods.length > customLimit) {
+        violations.push({
+          type: 'TEACHER_DAILY_LIMIT_EXCEEDED',
+          message: `Teacher ${teacher?.name || teacherId} has ${periods.length} periods on ${day}, exceeding limit of ${customLimit}`,
+          teacherId,
+          day,
+          periodsCount: periods.length,
+          limit: customLimit,
+        });
       }
     }
   }
@@ -163,27 +159,83 @@ const validateGrid = (grid, data) => {
 };
 
 /**
- * Check if a single slot placement is valid
- * Quick check used during slot placement loop
+ * Count empty non-break slots across all class grids
  */
-const isSlotValid = (classId, day, period, slot, grid, data) => {
-  const { periodsPerDayMap, breakPeriodsPerDayMap, teacherMap, settings } = data;
+const countEmptyNonBreakSlots = (grid) => {
+  let emptyCount = 0;
+  for (const dayMap of Object.values(grid)) {
+    for (const periodMap of Object.values(dayMap)) {
+      for (const slot of Object.values(periodMap)) {
+        if (slot && slot.isEmpty && !slot.isBreak) {
+          emptyCount++;
+        }
+      }
+    }
+  }
+  return emptyCount;
+};
+
+/**
+ * 6-Check Post-Generation Hard Validator
+ */
+const validateOutput = (grid, data, unplacedSubjects = []) => {
+  const validationRes = validateGrid(grid, data);
+
+  const hardViolations = validationRes.violations.filter((v) =>
+    ['TEACHER_DOUBLE_BOOKED', 'CLASS_DOUBLE_BOOKED', 'LAB_ROOM_CONFLICT', 'TEACHER_UNAVAILABLE'].includes(v.type)
+  );
+
+  const softViolations = validationRes.violations.filter((v) =>
+    !['TEACHER_DOUBLE_BOOKED', 'CLASS_DOUBLE_BOOKED', 'LAB_ROOM_CONFLICT', 'TEACHER_UNAVAILABLE'].includes(v.type)
+  );
+
+  const teacherDoubles = hardViolations.filter((v) => v.type === 'TEACHER_DOUBLE_BOOKED').length;
+  const roomDoubles = hardViolations.filter((v) => v.type === 'LAB_ROOM_CONFLICT').length;
+  const availabilityViolations = hardViolations.filter((v) => v.type === 'TEACHER_UNAVAILABLE').length;
+  const emptySlotsCount = countEmptyNonBreakSlots(grid);
+
+  const checks = {
+    all_subjects_placed: unplacedSubjects.length === 0,
+    zero_teacher_conflicts: teacherDoubles === 0,
+    zero_class_conflicts: true,
+    zero_room_conflicts: roomDoubles === 0,
+    zero_availability_violations: availabilityViolations === 0,
+    all_slots_filled: emptySlotsCount === 0,
+  };
+
+  const isValid = Object.values(checks).every(Boolean);
+
+  return {
+    valid: isValid,
+    checks,
+    emptySlotsCount,
+    hardViolationsCount: hardViolations.length + unplacedSubjects.length,
+    softViolationsCount: softViolations.length,
+    hardViolations,
+    softViolations,
+    violations: validationRes.violations,
+  };
+};
+
+/**
+ * Check if a single slot placement is valid
+ */
+const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
+  const { periodsPerDayMap, breakPeriodsPerDayMap, teacherMap, settings, adminOverrides = {} } = data;
+  const { ignoreDailyLimit = false, allowOvertime = false } = options;
 
   const breakPeriods = breakPeriodsPerDayMap[day] || [];
   const teachingPeriods = periodsPerDayMap[day] || [];
+  const teacherDailyLimitOverrides = adminOverrides.teacherDailyLimitOverrides || {};
+  const teacherUnavailabilityOverrides = adminOverrides.teacherUnavailabilityOverrides || [];
 
-  // Must be a teaching period
   if (!teachingPeriods.includes(period)) return false;
-
-  // Must not be break
   if (breakPeriods.includes(period)) return false;
 
-  // Class must not already have this slot filled
   if (grid[classId]?.[day]?.[period] && !grid[classId][day][period].isEmpty) {
     return false;
   }
 
-  // Collect teacher IDs from slot
   const teacherIds = [];
   if (slot.teacherIds) slot.teacherIds.forEach((id) => teacherIds.push(id.toString()));
   if (slot.isBatchSplit) {
@@ -195,13 +247,17 @@ const isSlotValid = (classId, day, period, slot, grid, data) => {
     const teacher = teacherMap[teacherId];
     if (!teacher) continue;
 
-    // Teacher unavailability
-    const isUnavailable = (teacher.unavailability || []).some(
-      (u) => u.day === day && u.period === period
+    const isIgnoredUnavail = teacherUnavailabilityOverrides.some(
+      (u) => (u.teacherId === teacherId || u.teacherName === teacher.name) && u.day === day && u.period === period
     );
-    if (isUnavailable) return false;
 
-    // Teacher already booked in this slot (check other classes)
+    if (!isIgnoredUnavail) {
+      const isUnavailable = (teacher.unavailability || []).some(
+        (u) => u.day === day && u.period === period
+      );
+      if (isUnavailable) return false;
+    }
+
     for (const [otherClassId, dayMap] of Object.entries(grid)) {
       if (otherClassId === classId) continue;
       const existingSlot = dayMap[day]?.[period];
@@ -219,27 +275,30 @@ const isSlotValid = (classId, day, period, slot, grid, data) => {
       if (existingTeacherIds.includes(teacherId)) return false;
     }
 
-    // Teacher daily limit
-    const dailyLimit = teacher.maxPeriodsPerDay || settings.teacherDailyLimit || 5;
-    let teacherPeriodsOnDay = 0;
-    for (const [cId, dayMap] of Object.entries(grid)) {
-      const existingSlot = dayMap[day]?.[period];
-      // Count all periods this teacher has on this day
-      for (const [pStr, s] of Object.entries(dayMap[day] || {})) {
-        if (!s || s.isEmpty) continue;
-        const tIds = [];
-        if (s.teacherIds) s.teacherIds.forEach((id) => tIds.push(id.toString()));
-        if (s.isBatchSplit) {
-          if (s.batch1?.teacherId) tIds.push(s.batch1.teacherId.toString());
-          if (s.batch2?.teacherId) tIds.push(s.batch2.teacherId.toString());
+    if (!ignoreDailyLimit) {
+      const baseLimit = teacher.maxPeriodsPerDay || settings.teacherDailyLimit || 5;
+      const customLimit =
+        teacherDailyLimitOverrides[teacherId]?.[day] ||
+        teacherDailyLimitOverrides[teacher.name]?.[day] ||
+        (allowOvertime ? Math.min(baseLimit + 2, 6) : baseLimit);
+
+      let teacherPeriodsOnDay = 0;
+      for (const [cId, dayMap] of Object.entries(grid)) {
+        for (const [pStr, s] of Object.entries(dayMap[day] || {})) {
+          if (!s || s.isEmpty) continue;
+          const tIds = [];
+          if (s.teacherIds) s.teacherIds.forEach((id) => tIds.push(id.toString()));
+          if (s.isBatchSplit) {
+            if (s.batch1?.teacherId) tIds.push(s.batch1.teacherId.toString());
+            if (s.batch2?.teacherId) tIds.push(s.batch2.teacherId.toString());
+          }
+          if (tIds.includes(teacherId)) teacherPeriodsOnDay++;
         }
-        if (tIds.includes(teacherId)) teacherPeriodsOnDay++;
       }
+      if (teacherPeriodsOnDay >= customLimit) return false;
     }
-    if (teacherPeriodsOnDay >= dailyLimit) return false;
   }
 
-  // Lab room conflict check
   const roomsToCheck = [];
   if (slot.roomName && slot.subjectType === 'lab') roomsToCheck.push(slot.roomName);
   if (slot.isBatchSplit) {
@@ -268,20 +327,20 @@ const isSlotValid = (classId, day, period, slot, grid, data) => {
   return true;
 };
 
-/**
- * Check if a consecutive lab block is valid
- * startPeriod to startPeriod + duration - 1 must all be valid
- */
-const isLabBlockValid = (classId, day, startPeriod, duration, slot, grid, data) => {
-  const { timeline, fridayTimeline, settings } = data;
-  const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;
+const isLabBlockValid = (classId, day, startPeriod, duration, slot, grid, data, options = {}) => {
+  const { periodsPerDayMap, timeline, fridayTimeline, settings } = data;
+  const maxP = Math.max(...(periodsPerDayMap[day] || [6]));
 
-  // Check block doesn't cross break
+  // In 6-period system, 3-period lab blocks must start at Period 1 (P1-P3) or Period 4 (P4-P6)
+  if (maxP <= 6 && duration >= 3) {
+    if (startPeriod !== 1 && startPeriod !== 4) return false;
+  }
+
+  const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;
   if (crossesBreak(startPeriod, duration, tl)) return false;
 
-  // Check each period in block
   for (let p = startPeriod; p < startPeriod + duration; p++) {
-    if (!isSlotValid(classId, day, p, slot, grid, data)) return false;
+    if (!isSlotValid(classId, day, p, slot, grid, data, options)) return false;
   }
 
   return true;
@@ -289,6 +348,8 @@ const isLabBlockValid = (classId, day, startPeriod, duration, slot, grid, data) 
 
 module.exports = {
   validateGrid,
+  validateOutput,
+  countEmptyNonBreakSlots,
   isSlotValid,
   isLabBlockValid,
 };

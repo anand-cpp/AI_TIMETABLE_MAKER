@@ -1,5 +1,5 @@
 import { cn } from '../../utils/cn';
-import { Lock, FlaskConical, Layers, BookOpen } from 'lucide-react';
+import { Lock, FlaskConical, Layers, BookOpen, Zap, Sparkles } from 'lucide-react';
 
 const SlotCell = ({
   slot,
@@ -77,12 +77,16 @@ const SlotCell = ({
     );
   }
 
+  const isAutoFill = slot.isAutoFill || slot.subjectType === 'autofill';
+
   const cellClass = cn(
-    'timetable-cell border border-[var(--border)] p-2 min-h-[60px] relative group transition-all duration-150 select-none cursor-grab active:cursor-grabbing',
+    'timetable-cell border p-2 min-h-[60px] relative group transition-all duration-150 select-none cursor-grab active:cursor-grabbing',
+    isAutoFill ? 'bg-[var(--bg-surface-alt)] border-dashed border-[var(--border)]' : 'border-[var(--border)]',
     slot.subjectType === 'lab' && 'lab bg-[var(--accent-soft)]/40',
     slot.subjectType === 'theory' && 'theory bg-[var(--bg-surface)]',
     slot.subjectType === 'elective' && 'elective bg-[var(--accent-soft)]/20',
     slot.isLocked && 'locked bg-[var(--warning)]/10 ring-1 ring-[var(--warning)]',
+    slot.isOverride && 'ring-1 ring-amber-500/50 bg-amber-500/5',
     isSelected && 'ring-2 ring-[var(--accent)]',
     isDragging && 'opacity-40 scale-[0.98] border-2 border-dashed border-[var(--accent)]',
     isOver && 'ring-2 ring-[var(--accent)] bg-[var(--accent-soft)] border-2 border-dashed border-[var(--accent)] scale-[1.02] z-20'
@@ -90,7 +94,8 @@ const SlotCell = ({
 
   const TypeIcon =
     slot.subjectType === 'lab' ? FlaskConical :
-    slot.subjectType === 'elective' ? Layers : BookOpen;
+    slot.subjectType === 'elective' ? Layers :
+    isAutoFill ? Sparkles : BookOpen;
 
   return (
     <td
@@ -100,6 +105,23 @@ const SlotCell = ({
       className={cellClass}
       onClick={() => onClick?.(slot)}
     >
+      {/* ⚡ Override Marker Badge */}
+      {slot.isOverride && (
+        <div
+          className="absolute top-1 right-1 z-20 flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-white shadow-sm"
+          title={`⚡ Admin Override: ${slot.overrideDetails || slot.notes || 'Approved constraint waiver'}`}
+        >
+          <Zap className="w-2.5 h-2.5 fill-current" />
+        </div>
+      )}
+
+      {/* AUTO Badge for Auto-Fill Cells */}
+      {isAutoFill && (
+        <span className="absolute bottom-1 right-1 z-10 text-[9px] font-mono font-bold text-[var(--text-muted)] bg-[var(--bg-surface)] px-1 rounded border border-[var(--border)] uppercase opacity-80">
+          AUTO
+        </span>
+      )}
+
       {isOver && (
         <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center bg-[var(--accent)]/10 backdrop-blur-[1px] rounded-xs border-2 border-dashed border-[var(--accent)]">
           <span className="px-2 py-0.5 rounded bg-[var(--bg-surface)] text-[var(--accent)] font-sans font-bold text-[10px] uppercase shadow-md tracking-wider">
@@ -111,13 +133,17 @@ const SlotCell = ({
       <div className="flex flex-col h-full min-h-[56px] justify-between pointer-events-none">
         <div className="flex-1">
           {/* Subject name */}
-          <p className="text-xs font-serif font-normal text-[var(--text-primary)] leading-tight break-words">
+          <p className={cn(
+            "text-xs font-serif text-[var(--text-primary)] leading-tight break-words pr-3",
+            isAutoFill ? "italic text-[var(--text-secondary)] font-normal" : "font-normal"
+          )}>
+            {slot.icon && <span className="mr-1.5 not-italic">{slot.icon}</span>}
             {slot.subjectName}
           </p>
 
           {/* Subject code */}
           {slot.subjectCode && (
-            <p className="text-[10px] font-mono font-semibold text-[var(--accent)] mt-0.5">
+            <p className="text-[10px] font-mono font-semibold text-[#B8A574] mt-0.5">
               {slot.subjectCode}
             </p>
           )}

@@ -54,6 +54,13 @@ const adminNavItems = [
     ],
   },
   {
+    group: 'AUDIT',
+    subtitle: 'Permission & overrides',
+    items: [
+      { label: 'Override Log', to: '/admin/override-log', icon: Zap },
+    ],
+  },
+  {
     group: 'SETTINGS',
     subtitle: 'Preferences',
     items: [

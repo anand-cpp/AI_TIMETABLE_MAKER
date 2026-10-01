@@ -86,14 +86,14 @@ const QualityScoreCard = ({ qualityScore, compact = false }) => {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-sans text-[var(--text-primary)] truncate flex items-center gap-1.5">
-                    <span className="px-1 py-0.2 rounded-xs bg-[var(--accent-soft)] font-mono text-[10px] text-[var(--accent)] font-medium uppercase">{cat.code}</span>
-                    {cat.label}
+                  <span className="text-xs font-sans text-[#EDE8D9] truncate flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 rounded-xs bg-[#24201A] font-mono text-[10px] text-[#B89968] font-bold uppercase">{cat.code}</span>
+                    <span className="text-[#EDE8D9] font-medium">{cat.label}</span>
                     {cat.weight && (
-                      <span className="text-[10px] font-sans text-[var(--text-muted)]">×{cat.weight}</span>
+                      <span className="text-[10px] font-sans text-[#8A8577]">×{cat.weight}</span>
                     )}
                   </span>
-                  <span className="text-xs font-mono font-medium text-[var(--text-primary)] ml-2 shrink-0">
+                  <span className="text-xs font-mono font-bold text-[#EDE8D9] ml-2 shrink-0">
                     {score}
                   </span>
                 </div>

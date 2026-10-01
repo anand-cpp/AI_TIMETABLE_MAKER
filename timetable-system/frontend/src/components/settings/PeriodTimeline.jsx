@@ -234,26 +234,24 @@ const PeriodTimeline = ({ settings, onSubmit, onPrevious, loading, isFriday = fa
   const [nextRequested, setNextRequested] = useState(false);
 
   useEffect(() => {
-    if (settings) {
-      const tl = isFriday
-        ? settings.fridayTimeline || []
-        : settings.periodTimeline || [];
-      
-      if (tl.length > 0) {
-        setTimeline(tl);
-      } else {
-        // Standard default schedule with Lunch Break
-        setTimeline([
-          defaultPeriod(1, false, 'Period 1', 60, '09:00'),
-          defaultPeriod(2, false, 'Period 2', 60, '10:00'),
-          defaultPeriod(3, true, 'Tea Break', 15, '11:00'),
-          defaultPeriod(4, false, 'Period 3', 60, '11:15'),
-          defaultPeriod(5, false, 'Period 4', 60, '12:15'),
-          defaultPeriod(6, true, 'Lunch Break', 45, '13:15'),
-          defaultPeriod(7, false, 'Period 5', 60, '14:00'),
-          defaultPeriod(8, false, 'Period 6', 60, '15:00'),
-        ]);
-      }
+    const tl = isFriday
+      ? settings?.fridayTimeline || []
+      : settings?.periodTimeline || [];
+    
+    if (tl.length > 0) {
+      setTimeline(tl);
+    } else {
+      // Standard default schedule with Lunch Break
+      setTimeline([
+        defaultPeriod(1, false, 'Period 1', 60, '09:00'),
+        defaultPeriod(2, false, 'Period 2', 60, '10:00'),
+        defaultPeriod(3, true, 'Tea Break', 15, '11:00'),
+        defaultPeriod(4, false, 'Period 3', 60, '11:15'),
+        defaultPeriod(5, false, 'Period 4', 60, '12:15'),
+        defaultPeriod(6, true, 'Lunch Break', 45, '13:15'),
+        defaultPeriod(7, false, 'Period 5', 60, '14:00'),
+        defaultPeriod(8, false, 'Period 6', 60, '15:00'),
+      ]);
     }
   }, [settings, isFriday]);
 
