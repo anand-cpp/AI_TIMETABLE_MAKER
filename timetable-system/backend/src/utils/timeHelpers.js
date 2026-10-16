@@ -64,29 +64,31 @@ const getTeachingPeriods = (timeline) => {
   return timeline.filter((p) => !p.isBreak).map((p) => p.periodNumber);
 };
 
-// Check if consecutive period numbers cross a break
+// Check if consecutive period numbers cross a break.
+// NOTE: the timeline array order is the source of truth (break entries may use
+// any periodNumber, e.g. 0), so this validates contiguity by position, not just
+// by numeric adjacency — otherwise a break sitting between P3 and P4 is missed.
 const crossesBreak = (startPeriod, duration, timeline) => {
-  const periodNumbers = [];
-  for (let i = startPeriod; i < startPeriod + duration; i++) {
-    periodNumbers.push(i);
+  if (!Array.isArray(timeline) || timeline.length === 0) return false;
+
+  const indices = [];
+  for (let i = 0; i < duration; i++) {
+    const pNum = startPeriod + i;
+    const idx = timeline.findIndex((t) => t.periodNumber === pNum && !t.isBreak);
+    if (idx === -1) return true; // Period missing or is itself a break = invalid
+    indices.push(idx);
   }
 
-  // Find if any period in the block is a break
-  for (const pNum of periodNumbers) {
-    const found = timeline.find((t) => t.periodNumber === pNum);
-    if (!found) return true; // Period doesn't exist = invalid
-    if (found.isBreak) return true; // Crosses break
+  const sorted = [...indices].sort((a, b) => a - b);
+
+  // Teaching periods of the block must be physically adjacent in the timeline.
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) return true;
   }
 
-  // Also check if there's a break between any two consecutive periods in block
-  for (let i = 0; i < periodNumbers.length - 1; i++) {
-    const current = periodNumbers[i];
-    const next = periodNumbers[i + 1];
-    // Check if any break period sits between current and next
-    const inBetween = timeline.filter(
-      (t) => t.periodNumber > current && t.periodNumber < next && t.isBreak
-    );
-    if (inBetween.length > 0) return true;
+  // No break entry may sit between the first and last period of the block.
+  for (let i = sorted[0]; i <= sorted[sorted.length - 1]; i++) {
+    if (timeline[i] && timeline[i].isBreak) return true;
   }
 
   return false;

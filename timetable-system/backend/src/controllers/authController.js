@@ -13,13 +13,8 @@ const generateToken = (id, role) => {
 // ─── Admin Setup (one-time) ───────────────────────────────────────────────────
 // POST /api/auth/setup
 const setupAdmin = async (req, res) => {
+  let lockAcquired = false;
   try {
-    // Block if admin already exists
-    const existingAdmin = await Admin.findOne();
-    if (existingAdmin) {
-      return sendError(res, 400, 'Admin already exists. Setup is only allowed once.');
-    }
-
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -30,8 +25,29 @@ const setupAdmin = async (req, res) => {
       return sendError(res, 400, 'Username must be at least 3 characters');
     }
 
-    if (password.length < 6) {
-      return sendError(res, 400, 'Password must be at least 6 characters');
+    if (password.length < 8) {
+      return sendError(res, 400, 'Password must be at least 8 characters');
+    }
+
+    // Block if admin already exists
+    const existingAdmin = await Admin.findOne();
+    if (existingAdmin) {
+      return sendError(res, 400, 'Admin already exists. Setup is only allowed once.');
+    }
+
+    // Atomic one-time guard: the unique _id guarantees only a single concurrent
+    // setup request can win, closing the findOne-then-create race.
+    try {
+      await Admin.db.collection('admin_setup_lock').insertOne({
+        _id: 'admin-setup',
+        createdAt: new Date(),
+      });
+      lockAcquired = true;
+    } catch (lockErr) {
+      if (lockErr && lockErr.code === 11000) {
+        return sendError(res, 400, 'Admin already exists. Setup is only allowed once.');
+      }
+      throw lockErr;
     }
 
     const admin = await Admin.create({
@@ -53,6 +69,12 @@ const setupAdmin = async (req, res) => {
   } catch (error) {
     if (error.code === 11000) {
       return sendError(res, 409, 'Username already taken');
+    }
+    // Release the lock if admin creation failed so setup can be retried.
+    if (lockAcquired) {
+      try {
+        await Admin.db.collection('admin_setup_lock').deleteOne({ _id: 'admin-setup' });
+      } catch (_) { /* best effort */ }
     }
     return sendError(res, 500, error.message);
   }

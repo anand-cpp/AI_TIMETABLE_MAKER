@@ -18,7 +18,7 @@ const apiLimiter = rateLimit({
 // Strict limiter for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -26,7 +26,7 @@ const authLimiter = rateLimit({
     message: 'Too many login attempts, please try again after 15 minutes',
   },
   skip: (req) => {
-    return process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
+    return process.env.NODE_ENV === 'test';
   },
 });
 

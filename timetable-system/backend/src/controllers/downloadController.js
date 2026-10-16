@@ -5,24 +5,29 @@ const { sendError } = require('../utils/responseHelpers');
 const pdfService = require('../services/pdfService');
 const excelService = require('../services/excelService');
 
-// Helper: get timetable version for download (supports query versionId, accepted, or latest fallback)
+// Helper: resolve the timetable version to download.
+//  - admins: may request any versionId, else accepted, else latest.
+//  - everyone else (incl. anonymous): only the accepted version, or a
+//    specific version that is itself accepted. Drafts are never exposed.
 const getTimetableForDownload = async (req, res) => {
   const { versionId } = req.query;
+  const isAdmin = req.user && req.user.role === 'admin';
   let timetable = null;
 
   if (versionId) {
     try {
-      timetable = await Timetable.findById(versionId);
+      const found = await Timetable.findById(versionId);
+      if (found && (isAdmin || found.isAccepted)) timetable = found;
     } catch {}
   }
   if (!timetable) {
     timetable = await Timetable.findOne({ isAccepted: true });
   }
-  if (!timetable) {
+  if (!timetable && isAdmin) {
     timetable = await Timetable.findOne().sort({ createdAt: -1 });
   }
   if (!timetable) {
-    sendError(res, 404, 'No timetable version available for download. Please generate a timetable first.');
+    sendError(res, 404, 'No published timetable is available for download.');
     return null;
   }
   return timetable;
@@ -75,6 +80,14 @@ const downloadAllClassesPdf = async (req, res) => {
 // DOWNLOAD Teacher Timetable PDF (GET /api/download/pdf/teacher/:teacherId)
 const downloadTeacherPdf = async (req, res) => {
   try {
+    // A teacher may only download their own timetable; admins may download any.
+    if (!req.user) {
+      return sendError(res, 401, 'Authentication required to download a teacher timetable');
+    }
+    if (req.user.role === 'teacher' && req.user._id.toString() !== req.params.teacherId) {
+      return sendError(res, 403, 'You can only download your own timetable');
+    }
+
     const timetable = await getTimetableForDownload(req, res);
     if (!timetable) return;
 
@@ -96,9 +109,13 @@ const downloadTeacherPdf = async (req, res) => {
   }
 };
 
-// DOWNLOAD All Teachers PDF (GET /api/download/pdf/all-teachers)
+// DOWNLOAD All Teachers PDF — admin only (contains every teacher's schedule)
 const downloadAllTeachersPdf = async (req, res) => {
   try {
+    if (!req.user || req.user.role !== 'admin') {
+      return sendError(res, 403, 'Admin access required to download all teacher timetables');
+    }
+
     const timetable = await getTimetableForDownload(req, res);
     if (!timetable) return;
 

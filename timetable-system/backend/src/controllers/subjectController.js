@@ -180,21 +180,61 @@ const validateSubjectData = async (body, existingSubjectId = null) => {
   return errors;
 };
 
+// ─── Build a Subject document payload from a request body ─────────────────────
+const buildSubjectData = (body) => {
+  const {
+    name,
+    code,
+    classId,
+    type,
+    weeklyHours,
+    teachers,
+    labDetails,
+    electiveDetails,
+    isElective,
+  } = body;
+
+  const subjectData = {
+    name: name.trim(),
+    code: code.trim().toUpperCase(),
+    classId,
+    type,
+    weeklyHours: type === 'lab' ? null : Number(weeklyHours),
+    teachers: teachers || [],
+    isElective: type === 'elective' || isElective || false,
+  };
+
+  if (type === 'lab' && labDetails) {
+    subjectData.labDetails = {
+      roomName: labDetails.roomName || '',
+      duration: Number(labDetails.duration) || 2,
+      isBatchSplit: labDetails.isBatchSplit || false,
+      batch1Teacher: labDetails.batch1Teacher || null,
+      batch2Teacher: labDetails.batch2Teacher || null,
+      batch1Room: labDetails.batch1Room || '',
+      batch2Room: labDetails.batch2Room || '',
+      morningPreference: labDetails.morningPreference || false,
+    };
+  }
+
+  if (type === 'elective' && electiveDetails) {
+    subjectData.electiveDetails = {
+      electiveType: electiveDetails.electiveType || 'linked',
+      linkedGroupId: electiveDetails.linkedGroupId || '',
+      linkedClasses: electiveDetails.linkedClasses || [],
+      openElectiveOptions: electiveDetails.openElectiveOptions || [],
+      participatingClasses: electiveDetails.participatingClasses || [],
+    };
+  }
+
+  return subjectData;
+};
+
 // ─── CREATE Subject ───────────────────────────────────────────────────────────
 // POST /api/subjects
 const createSubject = async (req, res) => {
   try {
-    const {
-      name,
-      code,
-      classId,
-      type,
-      weeklyHours,
-      teachers,
-      labDetails,
-      electiveDetails,
-      isElective,
-    } = req.body;
+    const { name, code, classId, type, weeklyHours } = req.body;
 
     // Validate
     const errors = await validateSubjectData(req.body);
@@ -206,43 +246,7 @@ const createSubject = async (req, res) => {
     const cls = await Class.findById(classId);
     if (!cls) return sendError(res, 404, 'Class not found');
 
-    // Build subject data
-    const subjectData = {
-      name: name.trim(),
-      code: code.trim().toUpperCase(),
-      classId,
-      type,
-      weeklyHours: type === 'lab' ? null : Number(weeklyHours),
-      teachers: teachers || [],
-      isElective: type === 'elective' || isElective || false,
-    };
-
-    // Lab details
-    if (type === 'lab' && labDetails) {
-      subjectData.labDetails = {
-        roomName: labDetails.roomName || '',
-        duration: Number(labDetails.duration) || 2,
-        isBatchSplit: labDetails.isBatchSplit || false,
-        batch1Teacher: labDetails.batch1Teacher || null,
-        batch2Teacher: labDetails.batch2Teacher || null,
-        batch1Room: labDetails.batch1Room || '',
-        batch2Room: labDetails.batch2Room || '',
-        morningPreference: labDetails.morningPreference || false,
-      };
-    }
-
-    // Elective details
-    if (type === 'elective' && electiveDetails) {
-      subjectData.electiveDetails = {
-        electiveType: electiveDetails.electiveType || 'linked',
-        linkedGroupId: electiveDetails.linkedGroupId || '',
-        linkedClasses: electiveDetails.linkedClasses || [],
-        openElectiveOptions: electiveDetails.openElectiveOptions || [],
-        participatingClasses: electiveDetails.participatingClasses || [],
-      };
-    }
-
-    const subject = await Subject.create(subjectData);
+    const subject = await Subject.create(buildSubjectData(req.body));
 
     // Add subject reference to parent class
     await Class.findByIdAndUpdate(classId, {
@@ -259,6 +263,85 @@ const createSubject = async (req, res) => {
   } catch (error) {
     if (error.code === 11000) {
       return sendError(res, 409, 'Subject with this code already exists in this class');
+    }
+    return sendError(res, 500, error.message);
+  }
+};
+
+// ─── BULK CREATE Subject (assign one subject across multiple classes) ──────────
+// POST /api/subjects/bulk
+// Creates one Subject document per requested class (the model stores a subject
+// per class). Existing (classId, code) pairs are skipped — the Subject model has
+// no unique (classId, code) index, so this dedupe is enforced here.
+const bulkCreateSubjects = async (req, res) => {
+  try {
+    const { classIds } = req.body;
+    if (!Array.isArray(classIds) || classIds.length === 0) {
+      return sendError(res, 400, 'At least one class is required');
+    }
+
+    // De-duplicate the requested class ids.
+    const uniqueClassIds = [
+      ...new Set(classIds.map((c) => (c && c._id ? c._id.toString() : c.toString()))),
+    ];
+
+    // Validate the shared fields once, using the first class for class existence.
+    const errors = await validateSubjectData({ ...req.body, classId: uniqueClassIds[0] });
+    if (errors.length > 0) {
+      return sendError(res, 400, errors.join(', '));
+    }
+
+    // Verify every requested class exists.
+    const classes = await Class.find({ _id: { $in: uniqueClassIds } });
+    const foundIds = new Set(classes.map((c) => c._id.toString()));
+    const missing = uniqueClassIds.filter((id) => !foundIds.has(id));
+    if (missing.length > 0) {
+      return sendError(res, 400, `Class(es) not found: ${missing.join(', ')}`);
+    }
+
+    const code = req.body.code.trim().toUpperCase();
+
+    // Skip classes that already own a subject with this code.
+    const existing = await Subject.find(
+      { classId: { $in: uniqueClassIds }, code },
+      'classId'
+    ).lean();
+    const existingClassIds = new Set(existing.map((s) => s.classId.toString()));
+
+    const createdIds = [];
+    const skipped = [];
+    for (const classId of uniqueClassIds) {
+      if (existingClassIds.has(classId)) {
+        skipped.push({ classId, reason: 'A subject with this code already exists in this class' });
+        continue;
+      }
+      const subject = await Subject.create(buildSubjectData({ ...req.body, classId }));
+      await Class.findByIdAndUpdate(classId, { $addToSet: { subjects: subject._id } });
+      createdIds.push(subject._id);
+    }
+
+    const populated = createdIds.length
+      ? await Subject.find({ _id: { $in: createdIds } })
+          .populate('classId', 'semester section departmentId')
+          .populate('teachers', 'name username')
+          .populate('labDetails.batch1Teacher', 'name username')
+          .populate('labDetails.batch2Teacher', 'name username')
+      : [];
+
+    return sendSuccess(
+      res,
+      201,
+      {
+        created: populated,
+        createdCount: populated.length,
+        skipped,
+        skippedCount: skipped.length,
+      },
+      `Created ${populated.length} subject(s)${skipped.length ? `, skipped ${skipped.length}` : ''}`
+    );
+  } catch (error) {
+    if (error.code === 11000) {
+      return sendError(res, 409, 'A subject with this code already exists in one of the selected classes');
     }
     return sendError(res, 500, error.message);
   }
@@ -361,6 +444,7 @@ module.exports = {
   getSubject,
   getLabRooms,
   createSubject,
+  bulkCreateSubjects,
   updateSubject,
   deleteSubject,
 };

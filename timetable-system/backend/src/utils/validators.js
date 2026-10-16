@@ -57,8 +57,14 @@ const validatePeriodTimeline = (timeline) => {
   }
 
   for (const period of timeline) {
-    if (!period.periodNumber || period.periodNumber < 1) {
+    // Break entries are numbered 0 (frontend convention); teaching periods are
+    // numbered from 1 upwards.
+    const num = Number(period.periodNumber);
+    if (!Number.isFinite(num) || num < 0) {
       return `Invalid period number: ${period.periodNumber}`;
+    }
+    if (!period.isBreak && num < 1) {
+      return `Invalid period number: ${period.periodNumber} (teaching periods must start at 1)`;
     }
     if (!period.startTime || !period.endTime) {
       return `Period ${period.periodNumber} missing start or end time`;

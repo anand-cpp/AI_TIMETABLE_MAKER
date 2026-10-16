@@ -34,16 +34,25 @@ const clearAllData = async () => {
     ...DEFAULT_SETTINGS,
   });
 
-  // Ensure standard admin account exists
-  let admin = await Admin.findOne({ username: 'admin' });
+  // Ensure an admin account exists. In production we must NEVER silently
+  // recreate the well-known default credentials — that would be a backdoor.
+  let admin = await Admin.findOne();
   if (!admin) {
-    admin = await Admin.create({
-      username: 'admin',
-      password: 'admin123',
-    });
-    console.log('✅ Admin Account Created (username: admin, password: admin123)');
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(
+        '⚠️ No admin account exists after wipe. Use POST /api/auth/setup to create one.'
+      );
+      // Allow one-time setup again.
+      await mongoose.connection.db.collection('admin_setup_lock').deleteOne({ _id: 'admin-setup' }).catch(() => {});
+    } else {
+      admin = await Admin.create({
+        username: 'admin',
+        password: 'admin123',
+      });
+      console.log('⚠️  DEV ONLY: default admin created (admin / admin123). Never use in production.');
+    }
   } else {
-    console.log('✅ Standard Admin Account Retained (username: admin)');
+    console.log('✅ Existing admin account retained (username: %s)', admin.username);
   }
 
   console.log('✨ All system data successfully wiped!');

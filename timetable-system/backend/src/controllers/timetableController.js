@@ -3,6 +3,41 @@ const Class = require('../models/Class');
 const Teacher = require('../models/Teacher');
 const { sendSuccess, sendError } = require('../utils/responseHelpers');
 const orchestrator = require('../services/engine/orchestrator');
+const {
+  validatePersistedTimetable,
+  summarizeViolations,
+} = require('../services/engine/persistedValidator');
+
+// Violation types that must never be introduced by a manual edit. Subject-hour
+// under/over scheduling and empty slots are intentionally excluded: an admin is
+// allowed to clear/adjust a slot, but not to create a real conflict.
+const EDIT_BLOCKING_TYPES = new Set([
+  'TEACHER_DOUBLE_BOOKED',
+  'LAB_ROOM_CONFLICT',
+  'TEACHER_UNAVAILABLE',
+  'INVALID_SLOT_NO_TEACHER',
+  'LAB_BLOCK_SPLIT',
+  'LAB_BLOCK_NON_CONSECUTIVE',
+  'LAB_BREAK_CROSSED',
+  'SLOT_OUT_OF_TIMELINE',
+  'BREAK_SLOT_USED',
+]);
+
+// Validate the (already mutated) in-memory timetable. Returns an error payload
+// when the edit introduces an edit-blocking violation, otherwise null.
+const checkEdit = async (timetable) => {
+  const validation = await validatePersistedTimetable(timetable);
+  const blocking = (validation.hardViolations || []).filter((v) =>
+    EDIT_BLOCKING_TYPES.has(v.type)
+  );
+  if (blocking.length > 0) {
+    return {
+      message: 'This edit would create a conflict and was rejected',
+      violations: summarizeViolations(blocking),
+    };
+  }
+  return null;
+};
 
 // GET All Timetable Versions (GET /api/timetable/versions)
 const getVersions = async (req, res) => {
@@ -92,6 +127,11 @@ const getTeacherTimetable = async (req, res) => {
 
     return sendSuccess(res, 200, {
       teacher,
+      // `slots` is the flat array the teacher timetable UI consumes; `timetable`
+      // (keyed by `day_period`) is kept for backwards compatibility.
+      slots: Object.values(teacherGrid).sort(
+        (a, b) => a.period - b.period || a.day.localeCompare(b.day)
+      ),
       timetable: teacherGrid,
       generatedAt: timetable.generatedAt,
       version: timetable.version,
@@ -186,13 +226,14 @@ const generateTimetable = async (req, res) => {
       });
     }
 
-    const latestVersionDoc = await Timetable.findOne().sort({ version: -1 });
-    const nextVersionNumber = latestVersionDoc ? latestVersionDoc.version + 1 : 1;
+    let latestVersionDoc = await Timetable.findOne().sort({ version: -1 });
+    let nextVersionNumber = latestVersionDoc ? latestVersionDoc.version + 1 : 1;
 
-    const newTimetable = await Timetable.create({
-      version: nextVersionNumber,
-      label: `Version ${nextVersionNumber}`,
+    const buildDoc = (version) => ({
+      version,
+      label: `Version ${version}`,
       isAccepted: false,
+      isComplete: !!engineResult.isComplete,
       classTimetables: engineResult.classTimetables,
       qualityScore: engineResult.qualityScore,
       validationChecks: engineResult.validationChecks || {},
@@ -203,6 +244,25 @@ const generateTimetable = async (req, res) => {
       generationStats: engineResult.generationStats || {},
     });
 
+    let newTimetable;
+    let attempts = 0;
+    // Retry on a version collision (concurrent generation) instead of silently
+    // creating duplicate version numbers.
+    for (;;) {
+      try {
+        newTimetable = await Timetable.create(buildDoc(nextVersionNumber));
+        break;
+      } catch (err) {
+        if (err && err.code === 11000 && attempts < 5) {
+          attempts++;
+          latestVersionDoc = await Timetable.findOne().sort({ version: -1 });
+          nextVersionNumber = latestVersionDoc ? latestVersionDoc.version + 1 : 1;
+          continue;
+        }
+        throw err;
+      }
+    }
+
     return sendSuccess(
       res,
       201,
@@ -211,6 +271,7 @@ const generateTimetable = async (req, res) => {
         permissionRequests: engineResult.permissionRequests || [],
         validationChecks: engineResult.validationChecks || {},
         autoFillStats: engineResult.autoFillStats || {},
+        isComplete: engineResult.isComplete,
       },
       `Timetable Version ${nextVersionNumber} generated successfully`
     );
@@ -226,6 +287,16 @@ const acceptVersion = async (req, res) => {
     const timetableToAccept = await Timetable.findById(req.params.id);
     if (!timetableToAccept) return sendError(res, 404, 'Timetable version not found');
 
+    // Publishing gate: never accept a timetable that violates hard constraints.
+    const validation = await validatePersistedTimetable(timetableToAccept);
+    if (!validation.valid) {
+      return sendError(res, 400, 'Cannot publish this timetable — it has unresolved conflicts', {
+        validationChecks: validation.checks,
+        hardViolationsCount: validation.hardViolationsCount,
+        violations: summarizeViolations(validation.hardViolations),
+      });
+    }
+
     await Timetable.updateMany(
       { _id: { $ne: req.params.id } },
       { $set: { isAccepted: false, acceptedAt: null } }
@@ -233,7 +304,18 @@ const acceptVersion = async (req, res) => {
 
     const accepted = await Timetable.findByIdAndUpdate(
       req.params.id,
-      { $set: { isAccepted: true, acceptedAt: new Date() } },
+      {
+        $set: {
+          isAccepted: true,
+          acceptedAt: new Date(),
+          validationChecks: {
+            ...(timetableToAccept.validationChecks || {}),
+            ...validation.checks,
+            hardViolationsCount: validation.hardViolationsCount,
+            revalidatedAt: new Date().toISOString(),
+          },
+        },
+      },
       { new: true }
     );
 
@@ -321,6 +403,10 @@ const editSetSlot = async (req, res) => {
       period: Number(period),
     };
 
+    timetable.markModified('classTimetables');
+    const editError = await checkEdit(timetable);
+    if (editError) return sendError(res, 400, editError.message, { violations: editError.violations });
+
     await timetable.save();
     return sendSuccess(res, 200, { timetable }, 'Slot updated successfully');
   } catch (error) {
@@ -364,6 +450,10 @@ const editClearSlot = async (req, res) => {
       notes: '',
     };
 
+    timetable.markModified('classTimetables');
+    const editError = await checkEdit(timetable);
+    if (editError) return sendError(res, 400, editError.message, { violations: editError.violations });
+
     await timetable.save();
     return sendSuccess(res, 200, { timetable }, 'Slot cleared successfully');
   } catch (error) {
@@ -379,9 +469,11 @@ const editLockSlot = async (req, res) => {
     if (!timetable) return sendError(res, 404, 'Timetable version not found');
 
     const classTTIndex = timetable.classTimetables.findIndex((ct) => ct.classId.toString() === classId);
+    if (classTTIndex === -1) return sendError(res, 404, 'Class not found in timetable');
     const slotIndex = timetable.classTimetables[classTTIndex].slots.findIndex(
       (s) => s.day === day && s.period === Number(period)
     );
+    if (slotIndex === -1) return sendError(res, 404, 'Slot not found');
 
     timetable.classTimetables[classTTIndex].slots[slotIndex].isLocked = true;
     await timetable.save();
@@ -398,9 +490,11 @@ const editUnlockSlot = async (req, res) => {
     if (!timetable) return sendError(res, 404, 'Timetable version not found');
 
     const classTTIndex = timetable.classTimetables.findIndex((ct) => ct.classId.toString() === classId);
+    if (classTTIndex === -1) return sendError(res, 404, 'Class not found in timetable');
     const slotIndex = timetable.classTimetables[classTTIndex].slots.findIndex(
       (s) => s.day === day && s.period === Number(period)
     );
+    if (slotIndex === -1) return sendError(res, 404, 'Slot not found');
 
     timetable.classTimetables[classTTIndex].slots[slotIndex].isLocked = false;
     await timetable.save();
@@ -479,13 +573,19 @@ const editSwapSlots = async (req, res) => {
 
     timetable.markModified('classTimetables');
 
+    const editError = await checkEdit(timetable);
+    if (editError) return sendError(res, 400, editError.message, { violations: editError.violations });
+
     timetable.editHistory.push({
       action: 'swap',
       classId,
       day: slot1.day,
       period: slot1.period,
       before: { slot1: before1, slot2: before2 },
-      after: { slot1: before1, slot2: before2 },
+      after: {
+        slot1: slots[idx1].toObject ? slots[idx1].toObject() : { ...slots[idx1] },
+        slot2: slots[idx2].toObject ? slots[idx2].toObject() : { ...slots[idx2] },
+      },
       editedBy: req.user?.username || 'admin',
     });
 

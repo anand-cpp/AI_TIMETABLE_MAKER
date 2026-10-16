@@ -77,8 +77,33 @@ const requireOwnDataOrAdmin = (req, res, next) => {
   return sendError(res, 403, 'Access denied');
 };
 
+// Optionally verify a JWT: attach user if a valid token is present, otherwise
+// continue as an anonymous request. Used by download routes that are public for
+// the accepted timetable but privileged for other versions.
+const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return next();
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decoded.role === 'admin') {
+      const admin = await Admin.findById(decoded.id).select('-password');
+      if (admin) req.user = { ...admin.toObject(), role: 'admin' };
+    } else if (decoded.role === 'teacher') {
+      const teacher = await Teacher.findById(decoded.id).select('-password');
+      if (teacher && teacher.isActive) req.user = { ...teacher.toObject(), role: 'teacher' };
+    }
+  } catch (_) {
+    // Ignore invalid tokens — treat as anonymous.
+  }
+  return next();
+};
+
 module.exports = {
   authenticate,
+  optionalAuth,
   requireAdmin,
   requireTeacher,
   requireOwnDataOrAdmin,

@@ -6,6 +6,7 @@ const {
   getSubject,
   getLabRooms,
   createSubject,
+  bulkCreateSubjects,
   updateSubject,
   deleteSubject,
 } = require('../controllers/subjectController');
@@ -17,6 +18,11 @@ router.get('/lab-rooms', getLabRooms);
 
 // Public GET
 router.get('/', getSubjects);
+
+// Admin only - bulk assign one subject across multiple classes.
+// Registered before '/:id' so it is not captured by the id route.
+router.post('/bulk', authenticate, requireAdmin, bulkCreateSubjects);
+
 router.get('/:id', getSubject);
 
 // Admin only

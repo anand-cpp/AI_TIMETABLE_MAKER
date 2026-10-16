@@ -30,10 +30,22 @@ app.use(
   })
 );
 
-// Reflect requesting origin for CORS
+// CORS: only allow the configured client origin(s) (comma-separated).
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      // Allow same-origin / non-browser requests (no Origin header) and the
+      // explicit allow-list. Everything else is rejected.
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS: origin ${origin} is not allowed`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

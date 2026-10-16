@@ -6,11 +6,10 @@ const sendSuccess = (res, statusCode = 200, data = {}, message = 'Success') => {
   });
 };
 
-const sendError = (res, statusCode = 500, message = 'Internal server error') => {
-  return res.status(statusCode).json({
-    success: false,
-    message,
-  });
+const sendError = (res, statusCode = 500, message = 'Internal server error', data = undefined) => {
+  const payload = { success: false, message };
+  if (data !== undefined) payload.data = data;
+  return res.status(statusCode).json(payload);
 };
 
 const sendPaginated = (res, data, total, page, limit) => {
