@@ -321,6 +321,105 @@ const scoreStudentStress = (grid, data) => {
   return classCount > 0 ? Math.round(totalScore / classCount) : 100;
 };
 
+// ── 8. Teacher Comfort ─────────────────────────────────────────────────────────
+// Teacher-friendly soft metric (distinct from the compactness-oriented
+// scoreTeacherGaps / scoreTravelOptimization above). Rewards:
+//   - lessons spread across the week (not concentrated on a few days),
+//   - short consecutive teaching runs (no long back-to-back chains),
+//   - no idle teaching periods at the very start or end of a teacher's day.
+const scoreTeacherComfort = (grid, data) => {
+  const { workingDays, periodsPerDayMap } = data;
+
+  const teacherDayPeriods = {}; // teacherId -> { day -> [periods] }
+
+  for (const dayMap of Object.values(grid)) {
+    for (const [day, periodMap] of Object.entries(dayMap)) {
+      const teachingPeriods = periodsPerDayMap[day] || [];
+      for (const [period, slot] of Object.entries(periodMap)) {
+        if (!slot || slot.isEmpty || slot.isBreak) continue;
+        const p = Number(period);
+        if (!teachingPeriods.includes(p)) continue;
+
+        const teacherIds = [];
+        if (slot.teacherIds) slot.teacherIds.forEach((id) => teacherIds.push(id.toString()));
+        if (slot.isBatchSplit) {
+          if (slot.batch1?.teacherId) teacherIds.push(slot.batch1.teacherId.toString());
+          if (slot.batch2?.teacherId) teacherIds.push(slot.batch2.teacherId.toString());
+        }
+
+        for (const tid of new Set(teacherIds)) {
+          if (!teacherDayPeriods[tid]) teacherDayPeriods[tid] = {};
+          if (!teacherDayPeriods[tid][day]) teacherDayPeriods[tid][day] = [];
+          if (!teacherDayPeriods[tid][day].includes(p)) teacherDayPeriods[tid][day].push(p);
+        }
+      }
+    }
+  }
+
+  const teacherIds = Object.keys(teacherDayPeriods);
+  if (teacherIds.length === 0) return 100;
+
+  let totalScore = 0;
+
+  for (const tid of teacherIds) {
+    const dayMap = teacherDayPeriods[tid];
+    let weeklyLoad = 0;
+    let teachingDays = 0;
+    let dayPenaltyTotal = 0;
+
+    for (const [day, periodsRaw] of Object.entries(dayMap)) {
+      const teachingPeriods = periodsPerDayMap[day] || [];
+      const periods = [...new Set(periodsRaw)].sort((a, b) => a - b);
+      if (periods.length === 0) continue;
+
+      teachingDays++;
+      weeklyLoad += periods.length;
+
+      const indexOf = (p) => teachingPeriods.indexOf(p);
+      const firstIdx = indexOf(periods[0]);
+      const lastIdx = indexOf(periods[periods.length - 1]);
+
+      // Idle teaching periods before the first / after the last class.
+      const leadingGap = firstIdx > 0 ? firstIdx : 0;
+      const trailingGap = lastIdx >= 0 ? teachingPeriods.length - 1 - lastIdx : 0;
+
+      // Consecutive teaching runs (a run is back-to-back periods).
+      const idxs = periods.map(indexOf).filter((i) => i >= 0);
+      let runs = 1;
+      let maxRun = 1;
+      let currentRun = 1;
+      for (let i = 1; i < idxs.length; i++) {
+        if (idxs[i] === idxs[i - 1] + 1) {
+          currentRun++;
+        } else {
+          runs++;
+          currentRun = 1;
+        }
+        maxRun = Math.max(maxRun, currentRun);
+      }
+
+      dayPenaltyTotal +=
+        leadingGap * 4 +
+        trailingGap * 4 +
+        Math.max(0, maxRun - 3) * 6 +
+        Math.max(0, runs - 1) * 4;
+    }
+
+    if (teachingDays === 0) continue;
+
+    const avgDayPenalty = dayPenaltyTotal / teachingDays;
+
+    // Spread term: a teacher with a multi-period load should span the week.
+    const idealDays = Math.max(1, Math.min(weeklyLoad, workingDays.length));
+    const spreadRatio = Math.min(1, teachingDays / idealDays);
+    const spreadPenalty = (1 - spreadRatio) * 25;
+
+    totalScore += Math.max(0, 100 - avgDayPenalty - spreadPenalty);
+  }
+
+  return Math.round(totalScore / teacherIds.length);
+};
+
 // ── Main Scorer ────────────────────────────────────────────────────────────────
 const scoreGrid = (grid, data) => {
   const teacherLoad = scoreTeacherLoad(grid, data);
@@ -330,16 +429,20 @@ const scoreGrid = (grid, data) => {
   const travelOptimization = scoreTravelOptimization(grid, data);
   const teacherGaps = scoreTeacherGaps(grid, data);
   const studentStress = scoreStudentStress(grid, data);
+  const teacherComfort = scoreTeacherComfort(grid, data);
 
-  // Weighted average - elective sync weighted 2x
+  // Weighted average. Teacher comfort is a first-class teacher-friendly goal
+  // (weight 2); the compactness-oriented metrics (travel/gaps) keep weight but
+  // are deliberately lower so they no longer dominate the teacher experience.
   const weights = {
     teacherLoad: 1,
     distribution: 1,
     labPlacement: 1,
     electiveSync: 2,
-    travelOptimization: 1,
-    teacherGaps: 1,
+    travelOptimization: 0.5,
+    teacherGaps: 0.5,
     studentStress: 1,
+    teacherComfort: 2,
   };
 
   const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
@@ -350,7 +453,8 @@ const scoreGrid = (grid, data) => {
       electiveSync * weights.electiveSync +
       travelOptimization * weights.travelOptimization +
       teacherGaps * weights.teacherGaps +
-      studentStress * weights.studentStress) /
+      studentStress * weights.studentStress +
+      teacherComfort * weights.teacherComfort) /
     totalWeight;
 
   return {
@@ -362,7 +466,8 @@ const scoreGrid = (grid, data) => {
     travelOptimization,
     teacherGaps,
     studentStress,
+    teacherComfort,
   };
 };
 
-module.exports = { scoreGrid };
+module.exports = { scoreGrid, scoreTeacherComfort };

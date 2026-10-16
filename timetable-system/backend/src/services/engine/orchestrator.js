@@ -2,7 +2,8 @@ const { loadData } = require('./dataLoader');
 const { checkFeasibility } = require('./feasibilityChecker');
 const { placeAllSubjects } = require('./slotPlacer');
 const { optimizeGrid } = require('./softOptimizer');
-const { validateGrid, validateOutput } = require('./constraintValidator');
+const { scoreGrid } = require('./qualityScorer');
+const { validateOutput } = require('./constraintValidator');
 
 /**
  * Helper to convert grid object to classTimetables array format
@@ -95,11 +96,24 @@ const run = async (options = {}) => {
 
     const feasibility = checkFeasibility(data);
 
+    // A hard-infeasible configuration cannot produce a valid timetable. Return
+    // the concrete reasons instead of fabricating a "complete" result.
+    if (!feasibility.feasible) {
+      return {
+        success: false,
+        error: `Timetable cannot be generated with the current data:\n- ${feasibility.errors.join('\n- ')}`,
+        feasibility,
+        validationChecks: { feasible: false },
+      };
+    }
+
     // Multi-Seed Search for 0 Hard Violations
     let bestPlacementRes = null;
     let bestOutputValidation = null;
+    let seedsTried = 0;
 
     for (let attemptSeed = 1; attemptSeed <= 5; attemptSeed++) {
+      seedsTried = attemptSeed;
       const randomize = attemptSeed > 1;
       const placementRes = placeAllSubjects(data, randomize, { adminOverrides: data.adminOverrides });
       const outputValidation = validateOutput(placementRes.grid, data, placementRes.unplacedSubjects);
@@ -115,10 +129,6 @@ const run = async (options = {}) => {
     }
 
     let { grid, unplacedSubjects, warnings, permissionRequests, autoFillStats } = bestPlacementRes;
-    const outputValidation = bestOutputValidation;
-    const hardViolations = outputValidation.hardViolationsCount || 0;
-    const softViolations = outputValidation.softViolationsCount || outputValidation.violations.length;
-    const isComplete = unplacedSubjects.length === 0 && hardViolations === 0 && outputValidation.emptySlotsCount === 0;
 
     let finalGrid = grid;
     try {
@@ -128,37 +138,49 @@ const run = async (options = {}) => {
       console.warn('⚠️ Soft optimizer warning:', optErr.message);
     }
 
-    let finalQualityScore = {
-      overall: unplacedSubjects.length === 0 ? Math.max(92 - hardViolations * 2, 85) : 0,
-      subjectPlacement: unplacedSubjects.length === 0 ? 30 : 0,
-      zeroViolations: hardViolations === 0 ? 30 : 20,
-      fullUtilization: outputValidation.emptySlotsCount === 0 ? 20 : 15,
-      teacherLoad: 9,
-    };
+    // Re-validate whatever grid we are actually going to save (the optimizer
+    // may have mutated it) so the reported checks reflect reality.
+    const outputValidation = validateOutput(finalGrid, data, unplacedSubjects);
+    const hardViolations = outputValidation.hardViolationsCount || 0;
+    const softViolations = outputValidation.softViolationsCount || 0;
+    const isComplete =
+      unplacedSubjects.length === 0 &&
+      outputValidation.valid &&
+      hardViolations === 0 &&
+      outputValidation.emptySlotsCount === 0;
+
+    const qualityScore = scoreGrid(finalGrid, data);
 
     const classTimetables = gridToClassTimetables(finalGrid, classes);
     const timeMs = Date.now() - startTime;
 
+    // Number of distinct (class,subject) pairs that were not fully scheduled
+    const unplacedCount = unplacedSubjects.length;
+    const subjectsPlaced = `${subjects.length - unplacedCount}/${subjects.length}`;
+
     return {
       success: true,
-      isComplete: true, // Functional timetable
+      isComplete,
+      publishable: isComplete,
       classTimetables,
-      qualityScore: finalQualityScore,
+      qualityScore,
       validationChecks: {
         ...outputValidation.checks,
         hardViolationsCount: hardViolations,
         softViolationsCount: softViolations,
       },
+      hardViolations: outputValidation.hardViolations,
+      softViolations: outputValidation.softViolations,
       autoFillStats: autoFillStats || {},
       warnings: [...(feasibility.warnings || []), ...warnings],
       unplacedSubjects: unplacedSubjects || [],
       permissionRequests: permissionRequests || [],
       generationStats: {
-        generations: 1247,
+        seedsTried,
         timeMs,
         hardViolations,
         softViolations,
-        subjectsPlaced: `${subjects.length - unplacedSubjects.length}/${subjects.length}`,
+        subjectsPlaced,
         emptySlotsCount: outputValidation.emptySlotsCount || 0,
       },
     };

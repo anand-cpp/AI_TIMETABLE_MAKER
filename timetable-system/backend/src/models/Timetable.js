@@ -29,7 +29,14 @@ const slotSchema = new mongoose.Schema(
     },
     isElective: { type: Boolean, default: false },
     electiveGroupId: { type: String, default: '' },
+    isAutoFill: { type: Boolean, default: false },
+    autoFillType: { type: String, default: '' },
+    icon: { type: String, default: '' },
     notes: { type: String, default: '' },
+    isEmpty: { type: Boolean, default: false },
+    isOverride: { type: Boolean, default: false },
+    overrideType: { type: String, default: '' },
+    overrideDetails: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -91,24 +98,41 @@ const timetableSchema = new mongoose.Schema(
       travelOptimization: { type: Number, default: 0 },
       teacherGaps: { type: Number, default: 0 },
       studentStress: { type: Number, default: 0 },
+      teacherComfort: { type: Number, default: 0 },
     },
     classTimetables: [classTimetableSchema],
+    isComplete: { type: Boolean, default: false },
+    validationChecks: { type: mongoose.Schema.Types.Mixed, default: {} },
+    autoFillStats: { type: mongoose.Schema.Types.Mixed, default: {} },
     warnings: [{ type: String }],
     unplacedSubjects: [
       {
         subjectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subject' },
         subjectName: { type: String },
+        subjectType: { type: String },
+        classId: { type: String },
+        className: { type: String },
+        placed: { type: Number },
+        expected: { type: Number },
+        missing: { type: Number },
         reason: { type: String },
       },
     ],
+    permissionRequests: { type: mongoose.Schema.Types.Mixed, default: [] },
     editHistory: [editHistorySchema],
     generationStats: {
       generations: { type: Number, default: 0 },
+      seedsTried: { type: Number, default: 0 },
       timeMs: { type: Number, default: 0 },
       hardViolations: { type: Number, default: 0 },
+      softViolations: { type: Number, default: 0 },
+      subjectsPlaced: { type: String, default: '' },
+      emptySlotsCount: { type: Number, default: 0 },
     },
   },
   { timestamps: true }
 );
+
+timetableSchema.index({ version: 1 }, { unique: true });
 
 module.exports = mongoose.model('Timetable', timetableSchema);

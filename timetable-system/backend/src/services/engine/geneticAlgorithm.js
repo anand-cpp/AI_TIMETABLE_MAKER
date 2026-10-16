@@ -1,4 +1,4 @@
-const { placeAllSubjects, gridToClassTimetables } = require('./slotPlacer');
+const { placeAllSubjects } = require('./slotPlacer');
 const { validateGrid } = require('./constraintValidator');
 const { scoreGrid } = require('./qualityScorer');
 

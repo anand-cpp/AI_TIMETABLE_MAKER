@@ -1,4 +1,4 @@
-const { isSlotValid, isLabBlockValid } = require('./constraintValidator');
+const { isSlotValid, isLabBlockValid, slotTeacherIds } = require('./constraintValidator');
 const { crossesBreak } = require('../../utils/timeHelpers');
 
 /**
@@ -198,6 +198,11 @@ const tryCascadeReschedule = (subject, classId, grid, data, slotData, depth = 1)
         const blockingSlot = dayMap[day]?.[period];
         if (!blockingSlot || blockingSlot.isEmpty || blockingSlot.isBreak || blockingSlot.isLocked) continue;
 
+        // Never displace a lab block, elective or batch-split slot — moving a
+        // single cell would corrupt the block. Only plain theory may move.
+        if (blockingSlot.isLabBlock || blockingSlot.isElective || blockingSlot.isBatchSplit) continue;
+        if (blockingSlot.subjectType && blockingSlot.subjectType !== 'theory') continue;
+
         if (blockingSlot.teacherIds?.includes(teacherId)) {
           for (const d2 of workingDays) {
             for (const p2 of periodsPerDayMap[d2] || []) {
@@ -223,12 +228,29 @@ const tryCascadeReschedule = (subject, classId, grid, data, slotData, depth = 1)
   return false;
 };
 
+// ── Count periods already allocated to a subject for a class ──────────────────
+const countPlacedForSubject = (grid, classId, subjectId) => {
+  const sid = subjectId.toString();
+  let count = 0;
+  const dayMap = grid[classId] || {};
+  for (const periodMap of Object.values(dayMap)) {
+    for (const slot of Object.values(periodMap)) {
+      if (!slot || slot.isEmpty || slot.isBreak) continue;
+      if (slot.subjectId && slot.subjectId.toString() === sid) count++;
+    }
+  }
+  return count;
+};
+
 // ── Theory Placement ─────────────────────────────────────────────────────────
 const placeTheorySubject = (subject, classId, grid, data, randomize = false, options = {}) => {
   const { workingDays, periodsPerDayMap, adminOverrides = {} } = data;
   const { allowOvertime = false, ignoreSameDay = false, includeSaturday = false } = options;
   const placed = [];
-  let remaining = subject.weeklyHours || 0;
+  // Account for periods already placed in a previous escalation attempt so a
+  // retry never over-allocates a subject beyond its weekly requirement.
+  const alreadyPlaced = countPlacedForSubject(grid, classId, subject._id);
+  let remaining = Math.max(0, (subject.weeklyHours || 0) - alreadyPlaced);
 
   const teacherIds = (subject.teachers || []).map((t) => (t._id ? t._id.toString() : t.toString()));
   const teacherNames = (subject.teachers || []).map((t) => t.name || '');
@@ -315,6 +337,12 @@ const placeLabSubject = (subject, classId, grid, data, randomize = false, option
 
   const duration = subject.labDetails?.duration || 3;
   const isBatchSplit = subject.labDetails?.isBatchSplit || false;
+
+  // If this subject's lab block already exists (e.g. a previous escalation
+  // attempt succeeded), do not place a second block.
+  if (countPlacedForSubject(grid, classId, subject._id) > 0) {
+    return { placed: [], unplaced: 0 };
+  }
 
   let teacherIds = [];
   let teacherNames = [];
@@ -503,31 +531,57 @@ const placeLinkedElective = (subject, allClassIds, grid, data, options = {}) => 
 
   const teacherIds = (subject.teachers || []).map((t) => (t._id ? t._id.toString() : t.toString()));
   const teacherNames = (subject.teachers || []).map((t) => t.name || '');
+  const groupId = subject.electiveDetails?.linkedGroupId || subject._id.toString();
 
-  const slotData = {
-    subjectId: subject._id.toString(),
-    subjectName: subject.name,
-    subjectCode: subject.code,
-    subjectType: 'elective',
-    teacherIds,
-    teacherNames,
-    roomName: '',
-    isEmpty: false,
-    isBreak: false,
-    isLabBlock: false,
-    labBlockIndex: 0,
-    isBatchSplit: false,
-    isElective: true,
-    electiveGroupId: subject.electiveDetails?.linkedGroupId || subject._id.toString(),
-    isLocked: false,
-    notes: '',
+  // A shared session with nobody teaching it is invalid metadata. The
+  // feasibility checker rejects this up-front; refuse here too so the placer can
+  // never emit a teacher-less elective slot (defense in depth).
+  if (teacherIds.length === 0) {
+    return { placed: false };
+  }
+
+  // A linked elective is ONE physical session attended by several classes. The
+  // session is taught by the primary subject's teachers, but each class's grid
+  // must carry that class's OWN elective subject doc so per-class hour
+  // accounting (validateSubjectHours) credits the shared session to the right
+  // doc instead of reporting the non-primary class as under-scheduled. The
+  // shared `electiveGroupId` is what lets the validator recognise the single
+  // physical session (so the teacher is not flagged as double-booked).
+  const ownSubjectFor = (classId) => {
+    const list = data.subjectsByClass?.[classId] || [];
+    const match = list.find(
+      (s) => s.type === 'elective' && s.electiveDetails?.linkedGroupId === groupId
+    );
+    return match || subject;
+  };
+
+  const slotDataFor = (classId) => {
+    const own = ownSubjectFor(classId);
+    return {
+      subjectId: own._id.toString(),
+      subjectName: own.name,
+      subjectCode: own.code,
+      subjectType: 'elective',
+      teacherIds,
+      teacherNames,
+      roomName: '',
+      isEmpty: false,
+      isBreak: false,
+      isLabBlock: false,
+      labBlockIndex: 0,
+      isBatchSplit: false,
+      isElective: true,
+      electiveGroupId: groupId,
+      isLocked: false,
+      notes: '',
+    };
   };
 
   for (const day of workingDays) {
     for (const period of periodsPerDayMap[day] || []) {
       let allFree = true;
       for (const classId of allClassIds) {
-        if (!isSlotValid(classId, day, period, slotData, grid, data, { allowOvertime })) {
+        if (!isSlotValid(classId, day, period, slotDataFor(classId), grid, data, { allowOvertime })) {
           allFree = false;
           break;
         }
@@ -535,7 +589,7 @@ const placeLinkedElective = (subject, allClassIds, grid, data, options = {}) => 
 
       if (allFree) {
         for (const classId of allClassIds) {
-          grid[classId][day][period] = { ...slotData, day, period };
+          grid[classId][day][period] = { ...slotDataFor(classId), day, period };
         }
         return { placed: true, day, period };
       }
@@ -807,7 +861,10 @@ const postPlacementFillPhase = (grid, data) => {
         : null;
 
       if (adjSubject) {
-        grid[classId][day][period] = {
+        // A tutorial may only carry the subject's teachers if they are actually
+        // free at this exact slot (no double-booking / unavailability / limit).
+        const candidateTeachers = (adjSubject.teacherIds || []).filter(Boolean);
+        const candidate = {
           day,
           period,
           isEmpty: false,
@@ -817,13 +874,28 @@ const postPlacementFillPhase = (grid, data) => {
           subjectName: `Tutorial: ${adjSubject.subjectName}`,
           subjectCode: `${adjSubject.subjectCode || 'SUB'}-TUT`,
           subjectType: 'autofill',
-          teacherIds: adjSubject.teacherIds || [],
-          teacherNames: adjSubject.teacherNames || [],
+          teacherIds: candidateTeachers,
+          teacherNames: candidateTeachers.length
+            ? adjSubject.teacherNames || []
+            : [],
           roomName: adjSubject.roomName || 'Classroom',
           icon: '✏️',
           notes: `Guided tutorial for ${adjSubject.subjectName}`,
           isOverride: false,
         };
+
+        const teachersAvailable =
+          candidateTeachers.length === 0 ||
+          isSlotValid(classId, day, period, candidate, grid, data, {});
+
+        if (!teachersAvailable) {
+          // Teachers are busy — keep the slot but without a teacher so this
+          // never creates an undetectable conflict.
+          candidate.teacherIds = [];
+          candidate.teacherNames = [];
+        }
+
+        grid[classId][day][period] = candidate;
         autoFillStats.tutorials++;
       } else {
         grid[classId][day][period] = {
@@ -866,6 +938,28 @@ const placeAllSubjects = (data, randomize = false, options = {}) => {
 
   const grid = initializeGrid(classes, workingDays, allPeriodsPerDayMap, breakPeriodsPerDayMap);
 
+  // Record a subject whose required periods could not be fully allocated.
+  const recordUnplaced = (subject, classId) => {
+    const placed = countPlacedForSubject(grid, classId, subject._id);
+    const expected =
+      subject.type === 'lab'
+        ? subject.labDetails?.duration || subject.weeklyHours || 2
+        : subject.weeklyHours || 0;
+    if (placed >= expected) return false;
+    const classObj = classMap[classId];
+    unplacedSubjects.push({
+      classId: String(classId),
+      className: classObj?.name || String(classId),
+      subjectId: subject._id.toString(),
+      subjectName: subject.name,
+      subjectType: subject.type,
+      placed,
+      expected,
+      missing: expected - placed,
+    });
+    return true;
+  };
+
   // Step 1: Open Electives
   const openElectives = subjects.filter((s) => s.type === 'elective' && s.electiveDetails?.electiveType === 'open');
   const placedOpenElectiveIds = new Set();
@@ -880,6 +974,7 @@ const placeAllSubjects = (data, randomize = false, options = {}) => {
     if (!res.placed) {
       const classObj = classMap[participatingClassIds[0]] || { _id: participatingClassIds[0], name: 'S7 Open Elective Class' };
       permissionRequests.push(generatePermissionRequest(subject, classObj, 'TEACHER_OVERTIME', data, grid));
+      for (const cid of participatingClassIds) recordUnplaced(subject, cid);
     }
     placedOpenElectiveIds.add(subject._id.toString());
   }
@@ -905,6 +1000,7 @@ const placeAllSubjects = (data, randomize = false, options = {}) => {
     if (!res.placed) {
       const classObj = classMap[allClassIds[0]] || { _id: allClassIds[0], name: 'Linked Elective Class' };
       permissionRequests.push(generatePermissionRequest(primarySubject, classObj, 'GENERAL_OVERRIDE', data, grid));
+      for (const cid of allClassIds) recordUnplaced(primarySubject, cid);
     }
   }
 
@@ -935,8 +1031,10 @@ const placeAllSubjects = (data, randomize = false, options = {}) => {
       const requestType = subject.labDetails?.roomName ? 'LAB_ROOM_CONFLICT' : 'CONSECUTIVE_SPLIT';
       permissionRequests.push(generatePermissionRequest(subject, classObj, requestType, data, grid));
 
-      placeLabSubject(subject, classId, grid, data, randomize, { allowAltRoom: true, allowSplit: true, allowOvertime: true, includeSaturday: true });
+      res = placeLabSubject(subject, classId, grid, data, randomize, { allowAltRoom: true, allowSplit: true, allowOvertime: true, includeSaturday: true });
     }
+
+    recordUnplaced(subject, classId);
   }
 
   // Step 4: Theory Subjects (Levels 1–10 Escalation)
@@ -965,8 +1063,10 @@ const placeAllSubjects = (data, randomize = false, options = {}) => {
     if (res.unplaced > 0) {
       permissionRequests.push(generatePermissionRequest(subject, classObj, 'TEACHER_OVERTIME', data, grid));
 
-      placeTheorySubject(subject, classId, grid, data, randomize, { allowOvertime: true, ignoreSameDay: true, includeSaturday: true, adminOverrides });
+      res = placeTheorySubject(subject, classId, grid, data, randomize, { allowOvertime: true, ignoreSameDay: true, includeSaturday: true, adminOverrides });
     }
+
+    recordUnplaced(subject, classId);
   }
 
   // Step 5: Post-Placement Auto-Fill Phase (Guarantees 100% Grid Utilization)
