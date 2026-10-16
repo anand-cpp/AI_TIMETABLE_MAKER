@@ -6,6 +6,7 @@ import Tabs from '../../components/ui/Tabs';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
+import Spinner from '../../components/ui/Spinner';
 import Breadcrumb from '../../components/ui/Breadcrumb';
 import CollegeInfoForm from '../../components/settings/CollegeInfoForm';
 import WorkingDaysForm from '../../components/settings/WorkingDaysForm';
@@ -98,7 +99,7 @@ const Settings = () => {
     }
   };
 
-  const handleEmailSave = async (data, nextRequested = false, finishRequested = false) => {
+  const handleEmailSave = async (data, finishRequested = false) => {
     try {
       setSaving(true);
       const res = await emailService.updateConfig(data);

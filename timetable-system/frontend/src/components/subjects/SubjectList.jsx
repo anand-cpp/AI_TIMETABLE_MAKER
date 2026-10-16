@@ -1,6 +1,5 @@
 import { BookOpen, FlaskConical, Layers, Pencil, Trash2 } from 'lucide-react';
 import Table from '../ui/Table';
-import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import Tooltip from '../ui/Tooltip';
 import { getPaletteForIndex } from '../../utils/palette';

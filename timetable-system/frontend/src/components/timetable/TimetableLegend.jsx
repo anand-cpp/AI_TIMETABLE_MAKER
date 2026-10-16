@@ -1,5 +1,4 @@
-import React from 'react';
-import { Zap, FlaskConical, Layers, BookOpen, Sparkles } from 'lucide-react';
+import { FlaskConical, Layers } from 'lucide-react';
 
 const TimetableLegend = () => {
   return (

@@ -1,6 +1,6 @@
 import Modal from './Modal';
 import Button from './Button';
-import { AlertTriangle, Info, CheckCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, Info, CheckCircle } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 const icons = {

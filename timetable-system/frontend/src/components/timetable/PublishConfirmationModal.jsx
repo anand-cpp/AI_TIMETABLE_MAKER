@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
-import { AlertTriangle, CheckCircle2, ShieldCheck, Info } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, Info } from 'lucide-react';
 
 const PublishConfirmationModal = ({
   isOpen,

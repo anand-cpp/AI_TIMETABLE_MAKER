@@ -107,7 +107,7 @@ const TimetableGrid = ({
     const dstDay = targetSlot.day;
     const dstPeriod = targetSlot.period;
 
-    if (process.env.NODE_ENV !== 'production' || window._DEBUG_DND) {
+    if (import.meta.env.DEV || window._DEBUG_DND) {
       console.group('🔍 DRAG END / SWAP DIAGNOSTIC');
       console.log('1. SOURCE (dragged):', { day: srcDay, period: srcPeriod, slot: sourceSlot });
       console.log('2. TARGET (over):', { day: dstDay, period: dstPeriod, slot: targetSlot });
@@ -119,7 +119,7 @@ const TimetableGrid = ({
     const originalSrc = clonedSlots.find((s) => s.day === srcDay && s.period === srcPeriod) || sourceSlot;
     const originalDst = clonedSlots.find((s) => s.day === dstDay && s.period === dstPeriod) || targetSlot;
 
-    if (process.env.NODE_ENV !== 'production' || window._DEBUG_DND) {
+    if (import.meta.env.DEV || window._DEBUG_DND) {
       console.log('3. BEFORE SWAP CONTENT:', {
         source: originalSrc,
         target: originalDst,
@@ -160,7 +160,7 @@ const TimetableGrid = ({
     const newSrc = updatedSlots.find((s) => s.day === srcDay && s.period === srcPeriod);
     const newDst = updatedSlots.find((s) => s.day === dstDay && s.period === dstPeriod);
 
-    if (process.env.NODE_ENV !== 'production' || window._DEBUG_DND) {
+    if (import.meta.env.DEV || window._DEBUG_DND) {
       console.log('4. AFTER SWAP CONTENT:', {
         newSource: newSrc,
         newTarget: newDst,

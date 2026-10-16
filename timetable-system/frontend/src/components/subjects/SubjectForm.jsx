@@ -3,7 +3,6 @@ import { useForm } from 'react-hook-form';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
-import Tabs from '../ui/Tabs';
 import TheoryFields from './TheoryFields';
 import LabFields from './LabFields';
 import ElectiveFields from './ElectiveFields';
@@ -19,6 +18,9 @@ const TYPE_OPTIONS = [
 const SubjectForm = ({ onSubmit, onCancel, loading, initialData, preselectedClassId }) => {
   const [classes, setClasses] = useState([]);
   const [subjectType, setSubjectType] = useState(initialData?.type || 'theory');
+  const [assignMode, setAssignMode] = useState('single');
+  const [selectedClassIds, setSelectedClassIds] = useState([]);
+  const [classError, setClassError] = useState('');
 
   const {
     register,
@@ -82,6 +84,13 @@ const SubjectForm = ({ onSubmit, onCancel, loading, initialData, preselectedClas
     setValue('type', val);
   };
 
+  const handleClassToggle = (classId) => {
+    setClassError('');
+    setSelectedClassIds((prev) =>
+      prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]
+    );
+  };
+
   const handleFormSubmit = (data) => {
     const payload = {
       ...data,
@@ -92,6 +101,17 @@ const SubjectForm = ({ onSubmit, onCancel, loading, initialData, preselectedClas
     if (subjectType !== 'lab') delete payload.labDetails;
     if (subjectType !== 'elective') delete payload.electiveDetails;
     if (subjectType === 'lab') delete payload.weeklyHours;
+
+    // Multi-class assignment: create the subject across every selected class.
+    const isBulk = !initialData && assignMode === 'multiple';
+    if (isBulk) {
+      if (selectedClassIds.length === 0) {
+        setClassError('Select at least one class');
+        return;
+      }
+      delete payload.classId;
+      payload.classIds = selectedClassIds;
+    }
 
     onSubmit(payload);
   };
@@ -134,15 +154,87 @@ const SubjectForm = ({ onSubmit, onCancel, loading, initialData, preselectedClas
         />
       </div>
 
-      <Select
-        label="Class"
-        required
-        options={classOptions}
-        placeholder="Select class"
-        disabled={!!preselectedClassId || !!initialData}
-        error={errors.classId?.message}
-        {...register('classId', { required: 'Class is required' })}
-      />
+      {/* Class assignment: single class, or the same subject across many classes */}
+      {!initialData && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-200">
+            Assign to
+          </span>
+          <div className="inline-flex rounded-2xl border border-slate-200 dark:border-slate-800 p-0.5 bg-white dark:bg-slate-950">
+            {[
+              { value: 'single', label: 'One class' },
+              { value: 'multiple', label: 'Multiple classes' },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { setAssignMode(opt.value); setClassError(''); }}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
+                  assignMode === opt.value
+                    ? 'bg-blue-500/15 text-blue-700 dark:text-cyan-300'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(initialData || assignMode === 'single') ? (
+        <Select
+          label="Class"
+          required
+          options={classOptions}
+          placeholder="Select class"
+          disabled={!!preselectedClassId || !!initialData}
+          error={errors.classId?.message}
+          {...register('classId', { required: 'Class is required' })}
+        />
+      ) : (
+        <div className="space-y-1.5">
+          <label className="block text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-200">
+            Classes <span className="text-rose-600 dark:text-rose-400 ml-1">*</span>
+          </label>
+          <div className="border border-slate-300 dark:border-slate-800 rounded-2xl max-h-48 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-900">
+            {classes.length === 0 ? (
+              <p className="p-4 text-xs font-semibold text-slate-400 text-center">
+                No classes found. Add classes first.
+              </p>
+            ) : (
+              classes.map((c) => {
+                const isSelected = selectedClassIds.includes(c._id);
+                return (
+                  <label
+                    key={c._id}
+                    className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors ${
+                      isSelected ? 'bg-blue-50/80 dark:bg-blue-950/50' : ''
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleClassToggle(c._id)}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">
+                      {c.departmentId?.code} Sem {c.semester} Sec {c.section}
+                    </span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+          {classError && <p className="form-error">{classError}</p>}
+          {!classError && selectedClassIds.length > 0 && (
+            <p className="form-hint">
+              {selectedClassIds.length} class(es) selected. A copy is created for every class that
+              does not already have this subject code.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Type selector */}
       <div>

@@ -17,5 +17,13 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // React Compiler opinions, not correctness issues: these two rules flag
+      // the standard `useEffect(() => { load(); })` data-loading pattern and
+      // context files that export a provider plus its hook. Keep them visible
+      // as warnings without failing the lint gate.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-refresh/only-export-components': 'warn',
+    },
   },
 ])

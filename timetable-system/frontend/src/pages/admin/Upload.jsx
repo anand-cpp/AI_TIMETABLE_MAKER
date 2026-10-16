@@ -193,7 +193,6 @@ const Upload = () => {
               <div className="divide-y divide-gray-100">
                 {files.map((file) => {
                   const status = statusConfig[file.ocrStatus] || statusConfig.pending;
-                  const StatusIcon = status.icon;
                   return (
                     <div
                       key={file._id}

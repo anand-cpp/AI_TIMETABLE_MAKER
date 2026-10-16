@@ -1,5 +1,4 @@
-import { Loader2, RefreshCw } from 'lucide-react';
-import { cn } from '../../utils/cn';
+import { Loader2 } from 'lucide-react';
 
 const SaveStatusIndicator = ({ status = 'saved', onRetry }) => {
   return (

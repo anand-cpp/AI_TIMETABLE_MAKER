@@ -1,5 +1,31 @@
 import api from './api';
 
+const versionQuery = (versionId) => (versionId ? `?versionId=${versionId}` : '');
+
+const filenameFromHeaders = (headers, fallback) => {
+  const disposition = headers?.['content-disposition'] || '';
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  return match ? decodeURIComponent(match[1]) : fallback;
+};
+
+const downloadFile = async (url, fallbackName) => {
+  try {
+    const res = await api.get(url, { responseType: 'blob' });
+    const blob = new Blob([res.data], {
+      type: res.headers['content-type'] || 'application/octet-stream',
+    });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filenameFromHeaders(res.headers, fallbackName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+  } catch (err) {
+    console.error('Download failed:', err?.response?.data?.message || err.message);
+  }
+};
+
 const timetableService = {
   // Versions
   getVersions: async () => {
@@ -80,36 +106,25 @@ const timetableService = {
     return res.data;
   },
 
-  // Downloads (Safe relative & full URL helpers)
-  downloadClassPdf: (classId, versionId) => {
-    const query = versionId ? `?versionId=${versionId}` : '';
-    window.open(`/api/download/pdf/class/${classId}${query}`, '_blank');
-  },
+  // Downloads — fetched with the auth token then saved as a blob so protected
+  // endpoints work without leaking credentials in the URL.
+  downloadClassPdf: (classId, versionId) =>
+    downloadFile(`/download/pdf/class/${classId}${versionQuery(versionId)}`, 'class-timetable.pdf'),
 
-  downloadAllClassesPdf: (versionId) => {
-    const query = versionId ? `?versionId=${versionId}` : '';
-    window.open(`/api/download/pdf/all-classes${query}`, '_blank');
-  },
+  downloadAllClassesPdf: (versionId) =>
+    downloadFile(`/download/pdf/all-classes${versionQuery(versionId)}`, 'all-classes-timetables.pdf'),
 
-  downloadTeacherPdf: (teacherId, versionId) => {
-    const query = versionId ? `?versionId=${versionId}` : '';
-    window.open(`/api/download/pdf/teacher/${teacherId}${query}`, '_blank');
-  },
+  downloadTeacherPdf: (teacherId, versionId) =>
+    downloadFile(`/download/pdf/teacher/${teacherId}${versionQuery(versionId)}`, 'teacher-timetable.pdf'),
 
-  downloadAllTeachersPdf: (versionId) => {
-    const query = versionId ? `?versionId=${versionId}` : '';
-    window.open(`/api/download/pdf/all-teachers${query}`, '_blank');
-  },
+  downloadAllTeachersPdf: (versionId) =>
+    downloadFile(`/download/pdf/all-teachers${versionQuery(versionId)}`, 'all-teacher-timetables.pdf'),
 
-  downloadClassExcel: (classId, versionId) => {
-    const query = versionId ? `?versionId=${versionId}` : '';
-    window.open(`/api/download/excel/class/${classId}${query}`, '_blank');
-  },
+  downloadClassExcel: (classId, versionId) =>
+    downloadFile(`/download/excel/class/${classId}${versionQuery(versionId)}`, 'class-timetable.xlsx'),
 
-  downloadAllClassesExcel: (versionId) => {
-    const query = versionId ? `?versionId=${versionId}` : '';
-    window.open(`/api/download/excel/all-classes${query}`, '_blank');
-  },
+  downloadAllClassesExcel: (versionId) =>
+    downloadFile(`/download/excel/all-classes${versionQuery(versionId)}`, 'all-classes-timetables.xlsx'),
 };
 
 export default timetableService;

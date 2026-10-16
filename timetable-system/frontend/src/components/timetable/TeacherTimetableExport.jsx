@@ -1,5 +1,3 @@
-import React from 'react';
-
 const TeacherTimetableExport = ({
   teacherName = 'Dr. Anoop Kumar',
   designation = 'HOD, CSE',

@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import Button from '../ui/Button';
 import {
   Zap,
-  AlertTriangle,
-  XCircle,
   ChevronDown,
   ChevronUp,
   Loader,

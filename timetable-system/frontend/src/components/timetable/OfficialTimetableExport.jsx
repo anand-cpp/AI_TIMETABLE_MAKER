@@ -1,5 +1,3 @@
-import React from 'react';
-
 // Helper to format subject display name with tutorial / lab suffixes
 const formatSlotDisplay = (slot) => {
   if (!slot || slot.isEmpty || slot.isBreak) return '';

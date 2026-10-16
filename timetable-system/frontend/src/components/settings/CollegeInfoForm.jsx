@@ -15,7 +15,7 @@ const CollegeInfoForm = ({ settings, onSubmit, loading }) => {
   } = useForm({
     defaultValues: {
       collegeName: '',
-      teacherDailyLimit: 5,
+      teacherDailyLimit: 4,
       periodDuration: 60,
     },
   });
@@ -24,7 +24,7 @@ const CollegeInfoForm = ({ settings, onSubmit, loading }) => {
     if (settings) {
       reset({
         collegeName: settings.collegeName || '',
-        teacherDailyLimit: settings.teacherDailyLimit || 5,
+        teacherDailyLimit: settings.teacherDailyLimit || 4,
         periodDuration: settings.periodDuration || 60,
       });
     }

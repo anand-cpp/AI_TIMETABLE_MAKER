@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Button from '../ui/Button';
 import { cn } from '../../utils/cn';
-import { Plus, Trash2, GripVertical, Utensils, Coffee, Clock, Wand2, Sliders } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Utensils, Coffee, Wand2, Sliders, ArrowLeft, ArrowRight } from 'lucide-react';
 
 const addMinutesToTime = (timeStr, minutes) => {
   if (!timeStr || !timeStr.includes(':')) return timeStr;

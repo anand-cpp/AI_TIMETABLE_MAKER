@@ -5,7 +5,7 @@ import Button from '../../components/ui/Button';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import SuggestionList from '../../components/suggestions/SuggestionList';
 import suggestionService from '../../services/suggestionService';
-import { CheckCheck, MessageSquare } from 'lucide-react';
+import { CheckCheck } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 const Suggestions = () => {

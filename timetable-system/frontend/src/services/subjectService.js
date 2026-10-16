@@ -21,6 +21,11 @@ const subjectService = {
     return res.data;
   },
 
+  bulkCreate: async (data) => {
+    const res = await api.post('/subjects/bulk', data);
+    return res.data;
+  },
+
   update: async (id, data) => {
     const res = await api.put(`/subjects/${id}`, data);
     return res.data;

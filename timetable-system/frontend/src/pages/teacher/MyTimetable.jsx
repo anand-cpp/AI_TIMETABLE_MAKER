@@ -7,8 +7,7 @@ import TeacherTimetableGrid from '../../components/timetable/TeacherTimetableGri
 import timetableService from '../../services/timetableService';
 import settingsService from '../../services/settingsService';
 import { formatDate } from '../../utils/formatters';
-import { Download, FileSpreadsheet, Calendar } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { Download, Calendar } from 'lucide-react';
 
 const MyTimetable = () => {
   const { user } = useAuth();

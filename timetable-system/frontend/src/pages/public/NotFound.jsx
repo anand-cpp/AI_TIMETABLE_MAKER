@@ -5,7 +5,7 @@ import { Home, ArrowLeft, Sparkles } from 'lucide-react';
 
 const NotFound = () => {
   const navigate = useNavigate();
-  const { isAdmin, isTeacher, isAuthenticated } = useAuth();
+  const { isAdmin, isTeacher } = useAuth();
 
   const getHomeRoute = () => {
     if (isAdmin) return '/admin';

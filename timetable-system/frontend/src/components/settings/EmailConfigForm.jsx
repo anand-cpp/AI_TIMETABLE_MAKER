@@ -65,7 +65,7 @@ const EmailConfigForm = ({ config, onSubmit, onPrevious, loading }) => {
   };
 
   const handleFormSubmit = (data) => {
-    onSubmit({ smtpConfig: data }, false, finishRequested);
+    onSubmit({ smtpConfig: data }, finishRequested);
   };
 
   return (

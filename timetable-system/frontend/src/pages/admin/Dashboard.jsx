@@ -23,38 +23,7 @@ import {
   CheckCircle2,
   ArrowRight,
   Sparkles,
-  Layers,
 } from 'lucide-react';
-
-const AnimatedCounter = ({ value }) => {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    if (!value) {
-      setCount(0);
-      return;
-    }
-    let start = 0;
-    const duration = 800;
-    const stepTime = 30;
-    const steps = Math.max(Math.floor(duration / stepTime), 1);
-    const increment = value / steps;
-
-    const timer = setInterval(() => {
-      start += increment;
-      if (start >= value) {
-        setCount(value);
-        clearInterval(timer);
-      } else {
-        setCount(Math.floor(start));
-      }
-    }, stepTime);
-
-    return () => clearInterval(timer);
-  }, [value]);
-
-  return <span>{count}</span>;
-};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -114,7 +83,7 @@ const Dashboard = () => {
           await seedKTUDummyData();
           toast.success('Dev Seed Complete!', { id: 'dev-seed' });
           loadStats();
-        } catch (err) {
+        } catch {
           toast.error('Dev Seed Failed', { id: 'dev-seed' });
         }
       }

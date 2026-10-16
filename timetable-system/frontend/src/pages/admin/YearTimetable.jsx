@@ -12,7 +12,6 @@ import departmentService from '../../services/departmentService';
 import timetableService from '../../services/timetableService';
 import api from '../../services/api';
 import {
-  Calendar,
   ArrowRight,
   ArrowLeft,
   Zap,

@@ -17,7 +17,7 @@ export const TimetableProvider = ({ children }) => {
       setLoading(true);
       const res = await timetableService.getVersions();
       setVersions(res.data.versions || []);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load timetable versions');
     } finally {
       setLoading(false);
@@ -31,7 +31,7 @@ export const TimetableProvider = ({ children }) => {
       const res = await timetableService.getVersion(id);
       setActiveVersion(res.data.timetable);
       return res.data.timetable;
-    } catch (err) {
+    } catch {
       toast.error('Failed to load timetable version');
       return null;
     } finally {

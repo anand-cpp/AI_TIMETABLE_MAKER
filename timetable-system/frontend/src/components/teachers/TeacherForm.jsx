@@ -18,8 +18,6 @@ const TeacherForm = ({ onSubmit, onCancel, loading, initialData }) => {
     register,
     handleSubmit,
     reset,
-    setValue,
-    watch,
     formState: { errors },
   } = useForm({
     defaultValues: {

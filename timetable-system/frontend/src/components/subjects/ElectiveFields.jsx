@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import Input from '../ui/Input';
-import Select from '../ui/Select';
 import Button from '../ui/Button';
-import Toggle from '../ui/Toggle';
 import teacherService from '../../services/teacherService';
 import classService from '../../services/classService';
 import { Plus, Trash2 } from 'lucide-react';
@@ -13,7 +11,7 @@ const ELECTIVE_TYPE_OPTIONS = [
   { value: 'open', label: 'Open Elective (students choose an option)' },
 ];
 
-const ElectiveFields = ({ register, errors, watch, setValue, initialData, currentClassId }) => {
+const ElectiveFields = ({ register, errors, setValue, initialData, currentClassId }) => {
   const [teachers, setTeachers] = useState([]);
   const [classes, setClasses] = useState([]);
   const [electiveType, setElectiveType] = useState('linked');
@@ -133,11 +131,6 @@ const ElectiveFields = ({ register, errors, watch, setValue, initialData, curren
       }))
     );
   };
-
-  const teacherOptions = teachers.map((t) => ({
-    value: t._id,
-    label: t.name,
-  }));
 
   return (
     <div className="space-y-4">

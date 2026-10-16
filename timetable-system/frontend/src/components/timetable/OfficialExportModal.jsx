@@ -3,7 +3,7 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import OfficialTimetableExport from './OfficialTimetableExport';
 import TeacherTimetableExport from './TeacherTimetableExport';
-import { Download, Printer, FileText, UserCheck, Layers } from 'lucide-react';
+import { Download, Printer, FileText, UserCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const OfficialExportModal = ({

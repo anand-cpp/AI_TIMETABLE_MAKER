@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertTriangle, Check, ShieldAlert, Sparkles, Clock } from 'lucide-react';
 
 const OvertimeRequestModal = ({
@@ -8,10 +8,8 @@ const OvertimeRequestModal = ({
   totalRequests = 1,
   onApplyOption,
 }) => {
-  if (!isOpen || !request) return null;
-
   const [selectedOptionId, setSelectedOptionId] = useState(
-    request.recommendedOptionId || (request.options && request.options[0]?.id)
+    request?.recommendedOptionId || request?.options?.[0]?.id
   );
   const [adminNotes, setAdminNotes] = useState('');
 
@@ -23,6 +21,8 @@ const OvertimeRequestModal = ({
       setAdminNotes('');
     }
   }, [request]);
+
+  if (!isOpen || !request) return null;
 
   const selectedOptionObj = request.options?.find((o) => o.id === selectedOptionId);
 

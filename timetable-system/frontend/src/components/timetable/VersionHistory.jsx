@@ -8,7 +8,6 @@ import { formatDateTime } from '../../utils/formatters';
 import {
   Clock,
   Trash2,
-  Check,
   AlertTriangle,
   CheckCircle2,
   ShieldCheck,

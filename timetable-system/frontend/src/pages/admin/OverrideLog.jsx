@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ShieldCheck, Zap, RotateCcw, Search, Filter, Clock, User, AlertCircle, FileText, CheckCircle2 } from 'lucide-react';
 import overrideService from '../../services/overrideService';
-import toast from 'react-hot-toast';
 
 const OverrideLog = () => {
   const [logs, setLogs] = useState([]);

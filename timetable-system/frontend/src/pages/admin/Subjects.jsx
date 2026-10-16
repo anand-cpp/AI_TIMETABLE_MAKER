@@ -65,6 +65,14 @@ const Subjects = () => {
       if (editTarget) {
         await subjectService.update(editTarget._id, data);
         toast.success('Subject updated successfully');
+      } else if (data.classIds && data.classIds.length > 0) {
+        const res = await subjectService.bulkCreate(data);
+        const created = res.data?.createdCount ?? 0;
+        const skipped = res.data?.skippedCount ?? 0;
+        toast.success(
+          `Created ${created} subject${created !== 1 ? 's' : ''}` +
+            (skipped ? `, skipped ${skipped} (already exists)` : '')
+        );
       } else {
         await subjectService.create(data);
         toast.success('Subject created successfully');

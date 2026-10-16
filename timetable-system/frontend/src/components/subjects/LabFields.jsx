@@ -10,7 +10,7 @@ const DURATION_OPTIONS = [
   { value: '3', label: '3 Consecutive Periods' },
 ];
 
-const LabFields = ({ register, errors, watch, setValue, initialData }) => {
+const LabFields = ({ register, errors, setValue, initialData }) => {
   const [teachers, setTeachers] = useState([]);
   const [labRooms, setLabRooms] = useState([]);
   const [isBatchSplit, setIsBatchSplit] = useState(false);
@@ -71,11 +71,6 @@ const LabFields = ({ register, errors, watch, setValue, initialData }) => {
   const teacherOptions = teachers.map((t) => ({
     value: t._id,
     label: `${t.name} ${t.departmentId?.code ? `(${t.departmentId.code})` : ''}`,
-  }));
-
-  const roomSuggestions = labRooms.map((r) => ({
-    value: r,
-    label: r,
   }));
 
   return (

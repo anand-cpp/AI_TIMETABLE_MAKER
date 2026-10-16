@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import Input from '../ui/Input';
-import Select from '../ui/Select';
 import teacherService from '../../services/teacherService';
 
-const TheoryFields = ({ register, errors, watch, setValue, initialData }) => {
+const TheoryFields = ({ register, errors, setValue, initialData }) => {
   const [teachers, setTeachers] = useState([]);
   const [selectedTeachers, setSelectedTeachers] = useState([]);
 
@@ -22,11 +21,6 @@ const TheoryFields = ({ register, errors, watch, setValue, initialData }) => {
       setValue('teachers', ids);
     }
   }, [initialData, setValue]);
-
-  const teacherOptions = teachers.map((t) => ({
-    value: t._id,
-    label: `${t.name} ${t.departmentId?.code ? `(${t.departmentId.code})` : ''}`,
-  }));
 
   const handleTeacherToggle = (teacherId) => {
     const updated = selectedTeachers.includes(teacherId)

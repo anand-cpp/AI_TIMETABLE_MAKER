@@ -1,15 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
-import { cn } from '../../utils/cn';
 import timetableService from '../../services/timetableService';
 import toast from 'react-hot-toast';
 import {
   Lock,
   Unlock,
   Trash2,
-  ArrowLeftRight,
   Info,
 } from 'lucide-react';
 
@@ -22,7 +20,6 @@ const EditSlotModal = ({
   onUpdate,
 }) => {
   const [loading, setLoading] = useState(false);
-  const [action, setAction] = useState(null);
 
   if (!slot) return null;
 

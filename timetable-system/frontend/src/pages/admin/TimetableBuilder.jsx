@@ -70,7 +70,7 @@ const TimetableBuilder = () => {
       try {
         localStorage.setItem(`timetable-cache-${id}`, JSON.stringify(res.data.timetable));
         localStorage.setItem('latest-timetable-cache', JSON.stringify(res.data.timetable));
-      } catch {}
+      } catch { /* ignore storage cache errors */ }
       const firstClass = res.data.timetable?.classTimetables?.[0];
       if (firstClass && !selectedClassId) {
         setSelectedClassId(firstClass.classId.toString());
@@ -99,7 +99,7 @@ const TimetableBuilder = () => {
     try {
       const res = await classService.getAll();
       setClasses(res.data.classes || []);
-    } catch {}
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
@@ -131,11 +131,30 @@ const TimetableBuilder = () => {
       }
 
       setLastGenerateResult(tt);
-      toast.success(`Timetable generated! 100% Subjects Placed. Score: ${tt?.qualityScore?.overall || 85}/100`);
+
+      const checks = tt?.validationChecks || {};
+      const unplacedCount = tt?.unplacedSubjects?.length || 0;
+      const allPlaced = checks.all_subjects_placed !== false && unplacedCount === 0;
+      const fullyFilled = checks.all_slots_filled !== false;
+      const score = tt?.qualityScore?.overall;
+
+      if (allPlaced && fullyFilled) {
+        toast.success(
+          `Timetable generated - all subjects placed${score != null ? `. Score: ${score}/100` : ''}`
+        );
+      } else {
+        toast.error(
+          `Timetable generated with ${unplacedCount} unplaced subject(s) - review before publishing`
+        );
+      }
 
       setGenerationReport({
-        subjectsPlacedCount: '60/60',
-        violationsCount: 0,
+        allPlaced,
+        fullyFilled,
+        unplacedCount,
+        subjectsPlacedCount: allPlaced ? 'All placed' : `${unplacedCount} unplaced`,
+        violationsCount: checks.hardViolationsCount || 0,
+        softWarnings: tt?.warnings?.length || 0,
         appliedOverrides: approvedOverrides,
         generationTime: `${((Date.now() - (window._genStartTime || Date.now())) / 1000).toFixed(1)}s`,
       });
@@ -143,7 +162,7 @@ const TimetableBuilder = () => {
       try {
         localStorage.setItem(`timetable-cache-${tt._id}`, JSON.stringify(tt));
         localStorage.setItem('latest-timetable-cache', JSON.stringify(tt));
-      } catch {}
+      } catch { /* ignore storage cache errors */ }
 
       setSaveStatus('saved');
       await loadVersions();
@@ -265,7 +284,7 @@ const TimetableBuilder = () => {
       try {
         localStorage.setItem(`timetable-cache-${prev._id}`, JSON.stringify(updatedObj));
         localStorage.setItem('latest-timetable-cache', JSON.stringify(updatedObj));
-      } catch {}
+      } catch { /* ignore storage cache errors */ }
       return updatedObj;
     });
 
@@ -278,7 +297,7 @@ const TimetableBuilder = () => {
           slot2: { day: targetSlot.day, period: targetSlot.period },
         });
         setSaveStatus('saved');
-      } catch (err) {
+      } catch {
         setSaveStatus(navigator.onLine ? 'error' : 'offline');
       }
     }

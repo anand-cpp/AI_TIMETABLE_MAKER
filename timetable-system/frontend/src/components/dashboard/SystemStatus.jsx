@@ -4,7 +4,6 @@ import api from '../../services/api';
 import {
   CheckCircle,
   XCircle,
-  Clock,
   Database,
   Server,
   Calendar,

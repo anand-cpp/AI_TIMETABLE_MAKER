@@ -15,9 +15,6 @@ import subjectService from '../../services/subjectService';
 import timetableService from '../../services/timetableService';
 import api from '../../services/api';
 import {
-  Building2,
-  Calendar,
-  CheckCircle2,
   ArrowRight,
   ArrowLeft,
   Zap,
@@ -110,7 +107,7 @@ const DepartmentTimetable = () => {
           teachersCount: deptTeachers.length,
           subjectsCount: deptSubjects.length,
         });
-      } catch {}
+      } catch { /* ignore */ }
     };
     loadStats();
   }, [selectedDeptId]);
