@@ -77,6 +77,13 @@ const Dashboard = () => {
     const handleKeyDown = async (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'D') {
         e.preventDefault();
+        const confirmed = window.confirm(
+          'DEV SEED (Ctrl+Shift+D)\n\n' +
+            'This WIPES ALL DATA — departments, classes, teachers, subjects and ' +
+            'timetables — then reloads the KTU demo dataset.\n\n' +
+            'This cannot be undone. Continue?'
+        );
+        if (!confirmed) return;
         try {
           toast.loading('Dev Seed: Populating KTU dataset...', { id: 'dev-seed' });
           const { seedKTUDummyData } = await import('../../data/seedDummyData');
