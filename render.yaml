@@ -1,0 +1,55 @@
+# Render Blueprint - AI Timetable Maker
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Deploys TWO services from this monorepo:
+#   1. timetable-backend  -> Express API   (Node web service)
+#   2. timetable-frontend -> React + Vite  (static site)
+#
+# The database is MongoDB Atlas (M0 free tier, created separately) - Render does
+# not host MongoDB. Create the Atlas cluster first, then paste its SRV URI into
+# the backend's MONGODB_URI env var in the Render dashboard.
+#
+# After BOTH services exist, set these two dashboard-only vars (see PRODUCTION_DEPLOYMENT.md):
+#   backend  CLIENT_URL    = https://<frontend>.onrender.com
+#   frontend VITE_API_URL  = https://<backend>.onrender.com/api   (then redeploy frontend)
+
+services:
+  # --- Backend API ------------------------------------------------------------
+  - type: web
+    name: timetable-backend
+    runtime: node
+    plan: free
+    region: singapore          # closest to India; change to oregon/ohio/virginia/frankfurt if you prefer
+    branch: main
+    rootDir: timetable-system/backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true    # Render generates a strong random 32+ char secret
+      - key: MONGODB_URI
+        sync: false            # set in dashboard: mongodb+srv://<user>:<pw>@<cluster>.mongodb.net/timetable_db?retryWrites=true&w=majority
+      - key: CLIENT_URL
+        sync: false            # set in dashboard: https://<frontend>.onrender.com
+    # NOTE: the backend writes uploads to ./uploads, but Render's free filesystem
+    # is ephemeral (files vanish on redeploy/restart). The scheduling engine needs
+    # no disk. Add a paid Persistent Disk only if uploaded files must survive.
+
+  # --- Frontend (static site) -------------------------------------------------
+  - type: web
+    name: timetable-frontend
+    runtime: static
+    branch: main
+    rootDir: timetable-system/frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false            # set in dashboard: https://<backend>.onrender.com/api
+    routes:
+      - type: rewrite          # SPA fallback so client-side routes work on refresh
+        source: /*
+        destination: /index.html

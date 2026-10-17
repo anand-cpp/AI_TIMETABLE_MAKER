@@ -153,6 +153,44 @@ up; the multer temp/`uploads` path must survive restarts.
 
 ---
 
+## 7. Managed hosting: Render + MongoDB Atlas (recommended)
+
+A blueprint is committed at the repo root (`render.yaml`) that deploys both
+services. Render does not host MongoDB, so the database is Atlas M0 (free).
+
+### 7.1 Create the database (Atlas M0)
+1. https://cloud.mongodb.com -> create an **M0 (free)** cluster.
+2. **Database Access** -> add a user with `readWrite` on `timetable_db`.
+3. **Network Access** -> allow `0.0.0.0/0` (or Render's outbound IPs).
+4. **Connect -> Drivers** -> copy the `mongodb+srv://...` string.
+
+### 7.2 Deploy with the blueprint
+1. Render dashboard -> **New -> Blueprint** -> pick this repo. Render reads
+   `render.yaml` and creates `timetable-backend` (web) + `timetable-frontend` (static).
+2. On the **backend** service, set the dashboard-only env vars:
+   - `MONGODB_URI` = the Atlas SRV string
+   - `CLIENT_URL`  = `https://<frontend>.onrender.com` (fill after the frontend URL is known)
+   (`JWT_SECRET` is auto-generated; `NODE_ENV=production` is set by the blueprint.)
+3. On the **frontend** service set `VITE_API_URL = https://<backend>.onrender.com/api`
+   and **redeploy** the frontend (Vite inlines env vars at build time).
+
+### 7.3 First-run admin
+Production has no default admin. Create one once:
+```bash
+curl -X POST https://<backend>.onrender.com/api/auth/setup \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<strong-password>"}'
+```
+
+### 7.4 Notes
+- **Free tier sleeps** after ~15 min idle; the first request then takes 30-60s.
+- **Ephemeral disk**: the `uploads/` directory is lost on redeploy/restart (the
+  engine needs no disk). Add a Persistent Disk if uploads must persist.
+- Copy existing local data into Atlas with `node scripts/migrateToAtlas.js`
+  (`--dry` first).
+
+---
+
 ## 8. Not yet done
 
 - **Browser/E2E automation was not run** during this audit — only unit/integration
