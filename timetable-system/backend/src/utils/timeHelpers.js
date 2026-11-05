@@ -64,12 +64,13 @@ const getTeachingPeriods = (timeline) => {
   return timeline.filter((p) => !p.isBreak).map((p) => p.periodNumber);
 };
 
-// Check if consecutive period numbers cross a break.
-// NOTE: the timeline array order is the source of truth (break entries may use
-// any periodNumber, e.g. 0), so this validates contiguity by position, not just
-// by numeric adjacency — otherwise a break sitting between P3 and P4 is missed.
-const crossesBreak = (startPeriod, duration, timeline) => {
+// Check if consecutive period numbers cross a LUNCH break.
+// Short breaks (≤20 min) between periods are ALLOWED in lab blocks.
+// Only lunch breaks (>20 min) break the lab block continuity.
+const crossesBreak = (startPeriod, duration, timeline, options = {}) => {
   if (!Array.isArray(timeline) || timeline.length === 0) return false;
+  
+  const { maxShortBreakMinutes = 20 } = options;
 
   const indices = [];
   for (let i = 0; i < duration; i++) {
@@ -82,13 +83,42 @@ const crossesBreak = (startPeriod, duration, timeline) => {
   const sorted = [...indices].sort((a, b) => a - b);
 
   // Teaching periods of the block must be physically adjacent in the timeline.
+  // Allow gaps that are only short breaks (≤ maxShortBreakMinutes)
   for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] !== sorted[i - 1] + 1) return true;
+    if (sorted[i] !== sorted[i - 1] + 1) {
+      // There's a gap - check if it's only short breaks
+      const gapStart = sorted[i - 1] + 1;
+      const gapEnd = sorted[i] - 1;
+      let onlyShortBreaks = true;
+      for (let g = gapStart; g <= gapEnd; g++) {
+        if (timeline[g] && timeline[g].isBreak) {
+          // Check if this break is short (≤20 min) or lunch
+          const breakStart = timeToMinutes(timeline[g].startTime);
+          const breakEnd = timeToMinutes(timeline[g].endTime);
+          const breakDuration = breakEnd - breakStart;
+          if (breakDuration > maxShortBreakMinutes) {
+            onlyShortBreaks = false;
+            break;
+          }
+        } else if (timeline[g] && !timeline[g].isBreak) {
+          // There's a teaching period in the gap - not contiguous
+          onlyShortBreaks = false;
+          break;
+        }
+      }
+      if (!onlyShortBreaks) return true;
+    }
   }
 
-  // No break entry may sit between the first and last period of the block.
+  // No LUNCH break entry may sit between the first and last period of the block.
+  // Short breaks are allowed.
   for (let i = sorted[0]; i <= sorted[sorted.length - 1]; i++) {
-    if (timeline[i] && timeline[i].isBreak) return true;
+    if (timeline[i] && timeline[i].isBreak) {
+      const breakStart = timeToMinutes(timeline[i].startTime);
+      const breakEnd = timeToMinutes(timeline[i].endTime);
+      const breakDuration = breakEnd - breakStart;
+      if (breakDuration > maxShortBreakMinutes) return true;
+    }
   }
 
   return false;
