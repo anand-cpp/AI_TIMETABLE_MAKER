@@ -53,6 +53,11 @@ const teacherSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    designation: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     unavailability: {
       type: [unavailabilitySchema],
       default: [],
@@ -62,6 +67,10 @@ const teacherSchema = new mongoose.Schema(
       default: false,
     },
     maxPeriodsPerDay: {
+      type: Number,
+      default: null,
+    },
+    maxPeriodsPerWeek: {
       type: Number,
       default: null,
     },

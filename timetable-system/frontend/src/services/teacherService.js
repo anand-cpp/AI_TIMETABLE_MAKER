@@ -16,13 +16,27 @@ const teacherService = {
     return res.data;
   },
 
-  create: async (data) => {
-    const res = await api.post('/teachers', data);
+  getFacultyProfile: async (id) => {
+    const res = await api.get(`/teachers/${id}/profile`);
     return res.data;
   },
 
-  update: async (id, data) => {
-    const res = await api.put(`/teachers/${id}`, data);
+  // ═══════════════════════════════════════════════════════════════
+  // TEACHER SUBJECT ALLOCATIONS
+  // ═══════════════════════════════════════════════════════════════
+
+  addAllocation: async (teacherId, allocationData) => {
+    const res = await api.post(`/teachers/${teacherId}/allocations`, allocationData);
+    return res.data;
+  },
+
+  removeAllocation: async (teacherId, allocId) => {
+    const res = await api.delete(`/teachers/${teacherId}/allocations/${allocId}`);
+    return res.data;
+  },
+
+  editAllocation: async (teacherId, allocId, allocationData) => {
+    const res = await api.put(`/teachers/${teacherId}/allocations/${allocId}`, allocationData);
     return res.data;
   },
 
@@ -33,6 +47,25 @@ const teacherService = {
 
   delete: async (id) => {
     const res = await api.delete(`/teachers/${id}`);
+    return res.data;
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // TEACHER SUBSTITUTIONS
+  // ═══════════════════════════════════════════════════════════════
+
+  getSubstitutions: async (teacherId) => {
+    const res = await api.get(`/substitutions/teacher/${teacherId}`);
+    return res.data;
+  },
+
+  createSubstitution: async (substitutionData) => {
+    const res = await api.post(`/substitutions`, substitutionData);
+    return res.data;
+  },
+
+  cancelSubstitution: async (substitutionId) => {
+    const res = await api.delete(`/substitutions/${substitutionId}`);
     return res.data;
   },
 };

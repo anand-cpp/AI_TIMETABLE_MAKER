@@ -31,11 +31,14 @@ const gridToClassTimetables = (grid, classes) => {
           subjectType: slot.subjectType || 'empty',
           teacherIds: slot.teacherIds || [],
           teacherNames: slot.teacherNames || [],
+          coInstructorIds: slot.coInstructorIds || [],
+          coInstructorNames: slot.coInstructorNames || [],
           roomName: slot.roomName || '',
           isLocked: slot.isLocked || false,
           isBreak: slot.isBreak || false,
           isLabBlock: slot.isLabBlock || false,
           labBlockIndex: slot.labBlockIndex || 0,
+          labBlockNumber: slot.labBlockNumber || 0,
           isBatchSplit: slot.isBatchSplit || false,
           batch1: slot.batch1 || { teacherId: null, teacherName: '', roomName: '' },
           batch2: slot.batch2 || { teacherId: null, teacherName: '', roomName: '' },
@@ -96,8 +99,6 @@ const run = async (options = {}) => {
 
     const feasibility = checkFeasibility(data);
 
-    // A hard-infeasible configuration cannot produce a valid timetable. Return
-    // the concrete reasons instead of fabricating a "complete" result.
     if (!feasibility.feasible) {
       return {
         success: false,
@@ -138,23 +139,19 @@ const run = async (options = {}) => {
       console.warn('⚠️ Soft optimizer warning:', optErr.message);
     }
 
-    // Re-validate whatever grid we are actually going to save (the optimizer
-    // may have mutated it) so the reported checks reflect reality.
     const outputValidation = validateOutput(finalGrid, data, unplacedSubjects);
     const hardViolations = outputValidation.hardViolationsCount || 0;
     const softViolations = outputValidation.softViolationsCount || 0;
     const isComplete =
       unplacedSubjects.length === 0 &&
       outputValidation.valid &&
-      hardViolations === 0 &&
-      outputValidation.emptySlotsCount === 0;
+      hardViolations === 0;
 
     const qualityScore = scoreGrid(finalGrid, data);
 
     const classTimetables = gridToClassTimetables(finalGrid, classes);
     const timeMs = Date.now() - startTime;
 
-    // Number of distinct (class,subject) pairs that were not fully scheduled
     const unplacedCount = unplacedSubjects.length;
     const subjectsPlaced = `${subjects.length - unplacedCount}/${subjects.length}`;
 

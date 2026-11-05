@@ -3,12 +3,13 @@ const Subject = require('../../models/Subject');
 const Teacher = require('../../models/Teacher');
 const Department = require('../../models/Department');
 const CollegeSettings = require('../../models/CollegeSettings');
+const ElectiveGroup = require('../../models/ElectiveGroup');
 const { DEFAULT_SETTINGS } = require('../../config/constants');
 const { getTeachingPeriods } = require('../../utils/timeHelpers');
 
 /**
  * Loads all data needed for timetable generation from DB
- * Supports filtering options (departmentId, year, semester, section, teacherAvailability)
+ * Supports: L/T/P/R breakdown, co-instructors, lab rooms, Friday separate timeline
  */
 const loadData = async (options = {}) => {
   // ── Load settings ──────────────────────────────────────────────────────────
@@ -49,15 +50,42 @@ const loadData = async (options = {}) => {
 
   // ── Load subjects for filtered classes ─────────────────────────────────────
   let subjects = await Subject.find({ classId: { $in: classIds } })
-    .populate('teachers', 'name username unavailability morningLabPreference maxPeriodsPerDay departmentId')
+    .populate('teachers', 'name username unavailability morningLabPreference maxPeriodsPerDay maxPeriodsPerWeek departmentId')
+    .populate('coInstructors', 'name username unavailability morningLabPreference maxPeriodsPerDay maxPeriodsPerWeek departmentId')
     .populate('labDetails.batch1Teacher', 'name username unavailability departmentId')
     .populate('labDetails.batch2Teacher', 'name username unavailability departmentId')
     .populate('electiveDetails.linkedClasses', 'semester section departmentId')
     .populate('electiveDetails.participatingClasses', 'semester section departmentId')
+    .populate('electiveDetails.electiveGroupId', 'name departmentId semester sections options')
+    .lean();
+
+  // ── Load elective groups for the filtered classes ──────────────────────────
+  const departmentIds = classes.map(c => c.departmentId._id.toString());
+  const semesters = [...new Set(classes.map(c => c.semester))];
+  let electiveGroups = await ElectiveGroup.find({
+    departmentId: { $in: departmentIds },
+    semester: { $in: semesters },
+    isActive: true,
+  })
+    .populate('options.subjectId', 'name code type weeklyHours')
+    .populate('options.teacherIds', 'name username unavailability morningLabPreference maxPeriodsPerDay maxPeriodsPerWeek departmentId')
     .lean();
 
   if (!subjects || subjects.length === 0) {
     throw new Error('No subjects found for the selected classes.');
+  }
+
+  // Add class semester info to subjects for lab room validation
+  const classMap = {};
+  for (const cls of classes) {
+    classMap[cls._id.toString()] = cls;
+  }
+  for (const sub of subjects) {
+    const cls = classMap[sub.classId.toString()];
+    if (cls) {
+      sub.classSemester = cls.semester;
+      sub.classSection = cls.section;
+    }
   }
 
   // ── Load teachers ──────────────────────────────────────────────────────────
@@ -90,11 +118,6 @@ const loadData = async (options = {}) => {
   }
 
   // ── Build helper maps ──────────────────────────────────────────────────────
-  const classMap = {};
-  for (const cls of classes) {
-    classMap[cls._id.toString()] = cls;
-  }
-
   const subjectMap = {};
   for (const sub of subjects) {
     subjectMap[sub._id.toString()] = sub;
@@ -113,13 +136,12 @@ const loadData = async (options = {}) => {
   }
 
   // ── Build timeline info ────────────────────────────────────────────────────
-  const timeline = settings.periodTimeline || DEFAULT_SETTINGS.periodTimeline;
-  const fridayTimeline =
-    settings.fridaySeparate && settings.fridayTimeline && settings.fridayTimeline.length > 0
-      ? settings.fridayTimeline
-      : timeline;
+  const monThuTimeline = settings.periodTimeline || DEFAULT_SETTINGS.periodTimeline;
+  const fridayTimeline = settings.fridaySeparate && settings.fridayTimeline && settings.fridayTimeline.length > 0
+    ? settings.fridayTimeline
+    : monThuTimeline;
 
-  const teachingPeriods = getTeachingPeriods(timeline);
+  const teachingPeriods = getTeachingPeriods(monThuTimeline);
   const fridayTeachingPeriods = getTeachingPeriods(fridayTimeline);
 
   const workingDays = settings.workingDays || DEFAULT_SETTINGS.workingDays;
@@ -135,13 +157,13 @@ const loadData = async (options = {}) => {
 
   const allPeriodsPerDayMap = {};
   for (const day of workingDays) {
-    const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;
+    const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : monThuTimeline;
     allPeriodsPerDayMap[day] = tl.map((p) => p.periodNumber);
   }
 
   const breakPeriodsPerDayMap = {};
   for (const day of workingDays) {
-    const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;
+    const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : monThuTimeline;
     breakPeriodsPerDayMap[day] = tl.filter((p) => p.isBreak).map((p) => p.periodNumber);
   }
 
@@ -158,8 +180,9 @@ const loadData = async (options = {}) => {
     periodsPerDayMap,
     allPeriodsPerDayMap,
     breakPeriodsPerDayMap,
-    timeline,
+    timeline: monThuTimeline,
     fridayTimeline,
+    electiveGroups,
   };
 };
 

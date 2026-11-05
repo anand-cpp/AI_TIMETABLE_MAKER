@@ -30,6 +30,7 @@ const TeacherDashboard = () => {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [noTimetable, setNoTimetable] = useState(false);
+  const [otherTeacherProfile, setOtherTeacherProfile] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -54,8 +55,21 @@ const TeacherDashboard = () => {
         setLoading(false);
       }
     };
+
+    const loadOtherProfile = async () => {
+      if (otherTeacherProfile) {
+        try {
+          const res = await teacherService.getFacultyProfile(otherTeacherProfile);
+          setOtherTeacherProfile(res.data);
+        } catch (err) {
+          console.error('Failed to load faculty profile:', err);
+        }
+      }
+    };
+
     load();
-  }, [user._id]);
+    loadOtherProfile();
+  }, [user._id, otherTeacherProfile]);
 
   if (loading) {
     return (
@@ -278,41 +292,62 @@ const TeacherDashboard = () => {
             </Card.Content>
           </Card>
 
-          {/* Unavailability summary */}
-          {profile?.unavailability?.length > 0 && (
+          {/* Other teacher profile */}
+          {otherTeacherProfile && (
             <Card>
               <Card.Header>
-                <Card.Title>Your Unavailability</Card.Title>
-                <Card.Description>
-                  {profile.unavailability.length} slot(s) marked
-                </Card.Description>
+                <Card.Title>Teacher Profile: {otherTeacherProfile.name}</Card.Title>
               </Card.Header>
               <Card.Content>
-                <div className="space-y-1">
-                  {DAYS.map((day) => {
-                    const daySlots = (profile.unavailability || [])
-                      .filter((u) => u.day === day)
-                      .map((u) => u.period)
-                      .sort((a, b) => a - b);
-                    if (daySlots.length === 0) return null;
-                    return (
-                      <div key={day} className="flex items-center gap-2 text-xs">
-                        <span className="w-8 font-medium text-gray-600">
-                          {day.slice(0, 3)}
-                        </span>
-                        <div className="flex gap-1 flex-wrap">
-                          {daySlots.map((p) => (
-                            <span
-                              key={p}
-                              className="px-1.5 py-0.5 bg-red-100 text-red-600 rounded font-medium"
-                            >
-                              P{p}
-                            </span>
-                          ))}
-                        </div>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Identity</p>
+                      <p>{otherTeacherProfile.name}</p>
+                      <p className="text-sm text-gray-500">@{otherTeacherProfile.username}</p>
+                      {otherTeacherProfile.departmentId?.name && (
+                        <p className="text-sm text-gray-500">Department: {otherTeacherProfile.departmentId.name}</p>
+                      )}
+                      {otherTeacherProfile.designation && (
+                        <p className="text-sm text-gray-500">Designation: {otherTeacherProfile.designation}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Workload Summary</p>
+                      <p>Total Weekly Hours: {otherTeacherProfile.summary?.totalWeeklyHours || 0}</p>
+                      <p>Theory Hours: {otherTeacherProfile.summary?.theoryHours || 0}</p>
+                      <p>Lab Hours: {otherTeacherProfile.summary?.labHours || 0}</p>
+                      <p>Elective Hours: {otherTeacherProfile.summary?.electiveHours || 0}</p>
+                      <p>Project Hours: {otherTeacherProfile.summary?.projectHours || 0}</p>
+                      <p>Placement Hours: {otherTeacherProfile.summary?.placementHours || 0}</p>
+                      <p>Total Subjects: {otherTeacherProfile.summary?.totalSubjects || 0}</p>
+                      <p>Semesters: {otherTeacherProfile.summary?.totalSemesters || 0}</p>
+                      <p>Sections: {otherTeacherProfile.summary?.totalSections || 0}</p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Teaching Assignments</p>
+                    {otherTeacherProfile.semesterBreakdown.map((sem, sIdx) => (
+                      <div key={sIdx} className="border-t pt-4 mb-4">
+                        <p className="text-sm font-medium text-gray-600">{`Semester ${sem.semester}`}</p>
+                        {sem.subjects.map((alloc, aIdx) => (
+                          <div key={aIdx} className="p-3 bg-slate-50 rounded mb-2">
+                            <p className="font-semibold text-gray-800">{alloc.subjectName} ({alloc.courseCode})</p>
+                            <p className="text-xs text-gray-500">
+                              S{alloc.semester} {alloc.section} · {alloc.branch} · {alloc.type}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {alloc.hours}h/week · {'Main' === alloc.isBatchSplit ? 'Batch Split' : alloc.batch || 'Single'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Elective Group: {alloc.electiveGroup || 'None'}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
               </Card.Content>
             </Card>

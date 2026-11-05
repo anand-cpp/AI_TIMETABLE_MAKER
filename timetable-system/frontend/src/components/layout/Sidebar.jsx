@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  Layers,
 } from 'lucide-react';
 
 const adminNavItems = [
@@ -33,6 +34,7 @@ const adminNavItems = [
       { label: 'Classes', to: '/admin/classes', icon: GraduationCap },
       { label: 'Teachers', to: '/admin/teachers', icon: Users },
       { label: 'Subjects', to: '/admin/subjects', icon: BookOpen },
+      { label: 'Elective Groups', to: '/admin/elective-groups', icon: Layers },
     ],
   },
   {

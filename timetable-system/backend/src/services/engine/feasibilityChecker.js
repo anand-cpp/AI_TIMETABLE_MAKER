@@ -1,9 +1,8 @@
 const { crossesBreak } = require('../../utils/timeHelpers');
 
 /**
- * Feasibility Checker
- * Runs BEFORE generation to detect impossible constraints
- * Returns { feasible: bool, errors: [], warnings: [] }
+ * Feasibility Checker - ASET 2026-27 EVEN Semester
+ * Supports: P2, P3 (Mon-Thu only), P6 (2×P3), Co-instructors, Lab 3/4 rooms, Friday separate timeline
  */
 const checkFeasibility = (data) => {
   const errors = [];
@@ -50,14 +49,10 @@ const checkFeasibility = (data) => {
       totalTeachingPeriodsPerWeek += (periodsPerDayMap[day] || []).length;
     }
 
-    // Count total periods needed
+    // Count total periods needed (L + T + P + R)
     let totalPeriodsNeeded = 0;
     for (const subject of classSubjects) {
-      if (subject.type === 'theory' || subject.type === 'elective') {
-        totalPeriodsNeeded += subject.weeklyHours || 0;
-      } else if (subject.type === 'lab') {
-        totalPeriodsNeeded += subject.labDetails?.duration || 2;
-      }
+      totalPeriodsNeeded += (subject.L || 0) + (subject.T || 0) + (subject.P || 0) + (subject.R || 0);
     }
 
     if (totalPeriodsNeeded > totalTeachingPeriodsPerWeek) {
@@ -84,22 +79,39 @@ const checkFeasibility = (data) => {
       }
 
       if (subject.type === 'lab') {
-        if (!subject.labDetails) {
-          errors.push(`${subLabel}: missing lab details`);
+        const P = subject.P || subject.labDetails?.duration || 0;
+        if (P === 0) {
+          errors.push(`${subLabel}: lab has no P (practical) hours specified`);
           continue;
         }
 
-        const duration = subject.labDetails.duration || 2;
+        const isP6 = P >= 6;
+        const blockDuration = isP6 ? 3 : P;
+        const numBlocks = isP6 ? 2 : 1;
 
-        // Check lab block doesn't cross breaks for any day
+        // Check lab block doesn't cross breaks for any day (Mon-Thu only for 3-period)
         let hasValidSlot = false;
         for (const day of workingDays) {
+          // Friday P3 prohibition
+          if (day === 'Friday' && blockDuration >= 3) {
+            continue;
+          }
+          
           const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;
           const periods = periodsPerDayMap[day] || [];
           for (const startPeriod of periods) {
-            if (!crossesBreak(startPeriod, duration, tl)) {
-              hasValidSlot = true;
-              break;
+            if (!crossesBreak(startPeriod, blockDuration, tl)) {
+              let allExist = true;
+              for (let p = startPeriod; p < startPeriod + blockDuration; p++) {
+                if (!periods.includes(p)) {
+                  allExist = false;
+                  break;
+                }
+              }
+              if (allExist) {
+                hasValidSlot = true;
+                break;
+              }
             }
           }
           if (hasValidSlot) break;
@@ -107,31 +119,27 @@ const checkFeasibility = (data) => {
 
         if (!hasValidSlot) {
           errors.push(
-            `${subLabel}: lab duration ${duration} cannot fit without crossing a break in any day`
+            `${subLabel}: lab block (${blockDuration} periods × ${numBlocks} blocks) cannot fit without crossing a break on any allowed day`
           );
         }
 
-        if (subject.labDetails.isBatchSplit) {
-          // Batch split needs 2 teachers + 2 rooms
-          if (!subject.labDetails.batch1Teacher) {
-            errors.push(`${subLabel}: batch-split lab missing batch 1 teacher`);
+        // Co-instructor support check
+        const allTeachers = [...(subject.teachers || []), ...(subject.coInstructors || [])];
+        if (allTeachers.length === 0) {
+          errors.push(`${subLabel}: lab has no teacher assigned`);
+        }
+        for (const t of allTeachers) {
+          const teacherId = t._id ? t._id.toString() : t.toString();
+          if (!teacherMap[teacherId]) {
+            errors.push(`${subLabel}: assigned teacher does not exist`);
           }
-          if (!subject.labDetails.batch2Teacher) {
-            errors.push(`${subLabel}: batch-split lab missing batch 2 teacher`);
-          }
-          if (!subject.labDetails.batch1Room) {
-            errors.push(`${subLabel}: batch-split lab missing batch 1 room`);
-          }
-          if (!subject.labDetails.batch2Room) {
-            errors.push(`${subLabel}: batch-split lab missing batch 2 room`);
-          }
-        } else {
-          if (!subject.teachers || subject.teachers.length === 0) {
-            errors.push(`${subLabel}: lab has no teacher assigned`);
-          }
-          if (!subject.labDetails.roomName) {
-            errors.push(`${subLabel}: lab has no room assigned`);
-          }
+        }
+
+        // Lab room check
+        const classSem = cls.semester || 0;
+        const expectedRoom = classSem === 2 ? 'Lab 3' : (classSem >= 4 ? 'Lab 4' : '');
+        if (expectedRoom && subject.labRoom && subject.labRoom !== expectedRoom) {
+          warnings.push(`${subLabel}: lab room is ${subject.labRoom} but semester ${classSem} typically uses ${expectedRoom}`);
         }
       }
 
@@ -162,8 +170,8 @@ const checkFeasibility = (data) => {
     }
   }
 
-  // ── 4. Teacher overload check ──────────────────────────────────────────────
-  const teacherWeeklyLoad = {}; // teacherId -> total periods assigned
+  // ── 4. Teacher overload check (L + T + P + R) ──────────────────────────────────────────────
+  const teacherWeeklyLoad = {};
 
   for (const subject of subjects) {
     const addLoad = (teacherId, periods) => {
@@ -174,26 +182,22 @@ const checkFeasibility = (data) => {
 
     if (subject.type === 'theory') {
       for (const t of subject.teachers || []) {
-        addLoad(t, subject.weeklyHours || 0);
+        addLoad(t, (subject.L || 0) + (subject.T || 0));
       }
     } else if (subject.type === 'lab') {
-      const duration = subject.labDetails?.duration || 2;
-      if (subject.labDetails?.isBatchSplit) {
-        addLoad(subject.labDetails.batch1Teacher, duration);
-        addLoad(subject.labDetails.batch2Teacher, duration);
-      } else {
-        for (const t of subject.teachers || []) {
-          addLoad(t, duration);
-        }
+      const P = subject.P || subject.labDetails?.duration || 0;
+      // All teachers (primary + co-instructors) get full P hours
+      for (const t of [...(subject.teachers || []), ...(subject.coInstructors || [])]) {
+        addLoad(t, P);
       }
     } else if (subject.type === 'elective') {
       if (subject.electiveDetails?.electiveType === 'open') {
         for (const opt of subject.electiveDetails.openElectiveOptions || []) {
-          addLoad(opt.teacherId, subject.weeklyHours || 1);
+          addLoad(opt.teacherId, (subject.L || 0) + (subject.T || 0));
         }
       } else {
         for (const t of subject.teachers || []) {
-          addLoad(t, subject.weeklyHours || 0);
+          addLoad(t, (subject.L || 0) + (subject.T || 0));
         }
       }
     }
@@ -209,27 +213,30 @@ const checkFeasibility = (data) => {
     const teacher = teacherMap[teacherId];
     if (!teacher) continue;
 
-    // Account for unavailability
     const unavailableCount = (teacher.unavailability || []).length;
     const effectiveMax = maxWeeklyPeriods - unavailableCount;
+    const teacherMaxWeekly = teacher.maxPeriodsPerWeek || maxWeeklyPeriods;
 
-    if (load > effectiveMax) {
+    if (load > teacherMaxWeekly) {
+      errors.push(
+        `Teacher ${teacher.name}: assigned ${load} periods/week but max is ${teacherMaxWeekly}`
+      );
+    } else if (load > effectiveMax) {
       errors.push(
         `Teacher ${teacher.name}: assigned ${load} periods/week but only ${effectiveMax} available (after unavailability)`
       );
-    } else if (load > maxWeeklyPeriods * 0.8) {
+    } else if (load > teacherMaxWeekly * 0.8) {
       warnings.push(
-        `Teacher ${teacher.name}: heavily loaded with ${load}/${effectiveMax} periods per week`
+        `Teacher ${teacher.name}: heavily loaded with ${load}/${teacherMaxWeekly} periods per week`
       );
     }
   }
 
-  // ── 5. Lab room conflicts (same room used by multiple classes at same time) ─
-  // This is a potential issue - just warn about shared lab rooms
-  const labRoomUsage = {}; // roomName -> [subjectNames]
+  // ── 5. Lab room conflicts ────────────────────────────────────────────────
+  const labRoomUsage = {};
   for (const subject of subjects) {
     if (subject.type === 'lab') {
-      const room = subject.labDetails?.roomName || '';
+      const room = subject.labRoom || subject.labDetails?.roomName || '';
       if (room) {
         if (!labRoomUsage[room]) labRoomUsage[room] = [];
         labRoomUsage[room].push(subject.name);
@@ -245,7 +252,20 @@ const checkFeasibility = (data) => {
     }
   }
 
-  // ── 6. Linked elective feasibility ────────────────────────────────────────
+  // ── 6. Lab 3 / Lab 4 capacity check ──────────────────────────────────────
+  const lab3Subjects = subjects.filter(s => s.type === 'lab' && (s.labRoom === 'Lab 3' || (s.classId && subjectsByClass[s.classId.toString()]?.[0]?.semester === 2)));
+  const lab4Subjects = subjects.filter(s => s.type === 'lab' && (s.labRoom === 'Lab 4' || (s.classId && subjectsByClass[s.classId.toString()]?.[0]?.semester >= 4)));
+
+  // Lab 3: S2 A & B (2 classes)
+  if (lab3Subjects.length > workingDays.length * 2) {
+    warnings.push(`Lab 3 has ${lab3Subjects.length} lab subjects for S2 (2 classes) - high contention`);
+  }
+  // Lab 4: S4 A/B, S6 A/B, S8 A/B (6 classes)
+  if (lab4Subjects.length > workingDays.length * 3) {
+    warnings.push(`Lab 4 has ${lab4Subjects.length} lab subjects for S4/S6/S8 (6 classes) - high contention`);
+  }
+
+  // ── 7. Linked elective feasibility ────────────────────────────────────────
   const linkedGroups = {};
   for (const subject of subjects) {
     if (
@@ -262,6 +282,17 @@ const checkFeasibility = (data) => {
   for (const [gid, groupSubjects] of Object.entries(linkedGroups)) {
     if (groupSubjects.length < 2) {
       warnings.push(`Linked elective group '${gid}' has only 1 subject — needs at least 2 classes`);
+    }
+  }
+
+  // ── 8. Friday separate timeline validation ────────────────────────────────
+  if (settings.fridaySeparate) {
+    if (!fridayTimeline || fridayTimeline.length === 0) {
+      errors.push('Friday separate timeline is enabled but fridayTimeline is empty');
+    }
+    const friTeachingPeriods = fridayTimeline.filter(p => !p.isBreak).length;
+    if (friTeachingPeriods !== 6) {
+      warnings.push(`Friday has ${friTeachingPeriods} teaching periods (expected 6)`);
     }
   }
 

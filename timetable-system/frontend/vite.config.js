@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
-    port: 5173,
+    port: 5174,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5000',
@@ -16,7 +16,7 @@ export default defineConfig({
   },
   preview: {
     host: true,
-    port: 5173,
+    port: 5174,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5000',

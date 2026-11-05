@@ -31,6 +31,8 @@ import Suggestions from './pages/admin/Suggestions';
 import EmailManager from './pages/admin/EmailManager';
 import Upload from './pages/admin/Upload';
 import OverrideLog from './pages/admin/OverrideLog';
+import ElectiveGroups from './pages/admin/ElectiveGroups';
+import FacultyProfile from './pages/admin/FacultyProfile';
 
 // Teacher Pages
 import TeacherDashboard from './pages/teacher/TeacherDashboard';
@@ -70,7 +72,9 @@ function App() {
               <Route path="departments" element={<Departments />} />
               <Route path="classes" element={<Classes />} />
               <Route path="teachers" element={<Teachers />} />
+              <Route path="teachers/:id/profile" element={<FacultyProfile />} />
               <Route path="subjects" element={<Subjects />} />
+              <Route path="elective-groups" element={<ElectiveGroups />} />
               <Route path="timetable" element={<TimetableBuilder />} />
               <Route path="department-timetable" element={<DepartmentTimetable />} />
               <Route path="year-timetable" element={<YearTimetable />} />

@@ -1,14 +1,25 @@
-import { Users, Pencil, Trash2, Mail, Phone, Key } from 'lucide-react';
+import { Users, Pencil, Trash2, Mail, Phone, Key, FileText } from 'lucide-react';
 import Table from '../ui/Table';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import Tooltip from '../ui/Tooltip';
 import { getPaletteForIndex } from '../../utils/palette';
 import { useTheme } from '../../context/ThemeContext';
+import { useEffect, useState } from 'react';
+import teacherService from '../../services/teacherService';
 
-const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials }) => {
+const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials, onViewProfile }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const [viewingProfile, setViewingProfile] = useState(null);
+
+  useEffect(() => {
+    if (viewingProfile) {
+      teacherService.getFacultyProfile(viewingProfile).then((res) => {
+        setViewingProfile(res.data);
+      });
+    }
+  }, [viewingProfile]);
 
   const columns = [
     {
@@ -17,7 +28,7 @@ const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials })
       render: (val, row, index) => {
         const paletteStyle = getPaletteForIndex(index, isDark);
         return (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" onClick={() => onViewProfile?.(row._id)}>
             <div
               style={paletteStyle}
               className="w-8 h-8 rounded-sm flex items-center justify-center shrink-0 font-sans font-bold text-xs border uppercase"
@@ -103,6 +114,14 @@ const TeacherList = ({ teachers, loading, onEdit, onDelete, onShowCredentials })
       cellClassName: 'text-right',
       render: (_, row) => (
         <div className="flex items-center justify-end gap-1">
+          <Tooltip content="View profile">
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => onViewProfile?.(row)}
+              leftIcon={<FileText className="w-3.5 h-3.5" strokeWidth={1.5} />}
+            />
+          </Tooltip>
           <Tooltip content="View credentials">
             <Button
               variant="ghost"

@@ -1,12 +1,8 @@
 const { crossesBreak } = require('../../utils/timeHelpers');
 
 /**
- * Constraint Validator
- * Checks hard constraints, subject-hour accounting and grid completeness on a
- * given timetable grid state.
- *
- * The functions here are intended to be usable both by the placement engine and
- * as an independent post-hoc validator for an already-persisted timetable.
+ * Constraint Validator - ASET 2026-27 EVEN Semester
+ * Supports: P2, P3 (Mon-Thu only), P6 (2×P3 blocks), Co-instructors, Lab 3/4 rooms
  */
 
 const HARD_VIOLATION_TYPES = [
@@ -22,16 +18,24 @@ const HARD_VIOLATION_TYPES = [
   'LAB_BREAK_CROSSED',
   'SLOT_OUT_OF_TIMELINE',
   'BREAK_SLOT_USED',
+  'TEACHER_DAILY_LIMIT_EXCEEDED',
+  'FRIDAY_P3_LAB_PROHIBITED',
+  'LAB_ROOM_MISMATCH',
+  'THEORY_CONSECUTIVE_PERIODS_VIOLATION',
+  'FIXED_SLOT_VIOLATION',
+  'FIXED_SLOT_CONFLICT',
 ];
 
 const isHardViolation = (type) => HARD_VIOLATION_TYPES.includes(type);
 
-// Extract every teacher a slot commits to (main + batch split teachers)
 const slotTeacherIds = (slot) => {
   const ids = [];
   if (!slot) return ids;
   if (Array.isArray(slot.teacherIds)) {
     slot.teacherIds.forEach((id) => id && ids.push(id.toString()));
+  }
+  if (Array.isArray(slot.coInstructorIds)) {
+    slot.coInstructorIds.forEach((id) => id && ids.push(id.toString()));
   }
   if (slot.isBatchSplit) {
     if (slot.batch1?.teacherId) ids.push(slot.batch1.teacherId.toString());
@@ -40,7 +44,6 @@ const slotTeacherIds = (slot) => {
   return ids;
 };
 
-// Rooms a slot occupies (labs and batch-split rooms)
 const slotRoomNames = (slot) => {
   const rooms = [];
   if (!slot) return rooms;
@@ -56,12 +59,6 @@ const slotRoomNames = (slot) => {
 
 const isOccupied = (slot) => slot && !slot.isEmpty && !slot.isBreak;
 
-/**
- * Shared elective token. Open/linked electives are a single physical session
- * attended by students from several classes, so the same teacher legitimately
- * appears in multiple class grids at the same day/period. This token lets the
- * validator recognise that shared session instead of flagging a conflict.
- */
 const sharedElectiveToken = (slot) => {
   if (!slot) return null;
   if (slot.isElective) return slot.electiveGroupId || slot.linkedGroupId || slot.subjectId?.toString() || null;
@@ -100,29 +97,24 @@ const validateGrid = (grid, data) => {
 
         if (!slot) continue;
 
-        // 1. Slot outside configured timeline (allPeriodsPerDayMap includes
-        // break period numbers, so this accepts the break cells too).
+        // 1. Slot outside configured timeline
         const validPeriods = allPeriodsPerDayMap[day] || periodsPerDayMap[day];
         if (validPeriods && !validPeriods.includes(period)) {
           violations.push({
             type: 'SLOT_OUT_OF_TIMELINE',
             message: `Class ${classId}: slot ${day} P${period} is not a configured period`,
-            classId,
-            day,
-            period,
+            classId, day, period,
           });
           continue;
         }
 
-        // Break cell — must not carry a teaching subject.
+        // Break cell — must not carry a teaching subject
         if (slot.isBreak) {
           if (slot.subjectId && !slot.isEmpty) {
             violations.push({
               type: 'BREAK_SLOT_USED',
               message: `Class ${classId}: break ${day} P${period} has a subject assigned`,
-              classId,
-              day,
-              period,
+              classId, day, period,
             });
           }
           continue;
@@ -130,14 +122,12 @@ const validateGrid = (grid, data) => {
 
         if (!isOccupied(slot)) continue;
 
-        // 2. A teaching slot must not sit on a configured break period.
+        // 2. Teaching slot must not sit on a configured break period
         if (breakPeriods.includes(period)) {
           violations.push({
             type: 'BREAK_SLOT_USED',
             message: `Class ${classId}: slot ${day} P${period} is a break period but has a subject assigned`,
-            classId,
-            day,
-            period,
+            classId, day, period,
           });
         }
 
@@ -147,9 +137,7 @@ const validateGrid = (grid, data) => {
           violations.push({
             type: 'INVALID_SLOT_NO_TEACHER',
             message: `Class ${classId}: ${day} P${period} has '${slot.subjectName || slot.subjectType}' but no valid teacher`,
-            classId,
-            day,
-            period,
+            classId, day, period,
           });
         }
 
@@ -169,9 +157,7 @@ const validateGrid = (grid, data) => {
               violations.push({
                 type: 'TEACHER_DOUBLE_BOOKED',
                 message: `Teacher ${teacher?.name || teacherId} is double-booked on ${day} period ${period}`,
-                teacherId,
-                day,
-                period,
+                teacherId, day, period,
               });
             }
           } else {
@@ -194,9 +180,7 @@ const validateGrid = (grid, data) => {
                 violations.push({
                   type: 'TEACHER_UNAVAILABLE',
                   message: `Teacher ${teacher.name} is unavailable on ${day} period ${period}`,
-                  teacherId,
-                  day,
-                  period,
+                  teacherId, day, period,
                 });
               }
             }
@@ -213,20 +197,92 @@ const validateGrid = (grid, data) => {
               violations.push({
                 type: 'LAB_ROOM_CONFLICT',
                 message: `Lab room '${room}' is used by multiple classes on ${day} period ${period}`,
-                room,
-                day,
-                period,
+                room, day, period,
               });
             }
           } else {
             labRoomSchedule[room][day].push(period);
           }
         }
+
+        // 6. Friday P3 Lab Prohibition
+        if (day === 'Friday' && slot.isLabBlock && slot.labBlockIndex === 0) {
+          const blockDuration = slot.labBlockDuration || (slot.labBlockIndex !== undefined ? 3 : 3);
+          if (blockDuration >= 3) {
+            violations.push({
+              type: 'FRIDAY_P3_LAB_PROHIBITED',
+              message: `Class ${classId}: 3-period lab block on Friday ${day} P${period} is prohibited (Friday periods are 50 min)`,
+              classId, day, period,
+            });
+          }
+        }
+
+        // 7. Lab Room Mismatch (S2 must use Lab 3, S4/S6/S8 must use Lab 4)
+        if (slot.subjectType === 'lab' && slot.roomName) {
+          const classSem = slot.classSemester || 0;
+          const expectedRoom = classSem === 2 ? 'Lab 3' : (classSem >= 4 ? 'Lab 4' : '');
+          if (expectedRoom && slot.roomName !== expectedRoom && !slot.isOverride) {
+            violations.push({
+              type: 'LAB_ROOM_MISMATCH',
+              message: `Class ${classId}: Lab assigned to ${slot.roomName} but semester ${classSem} requires ${expectedRoom}`,
+              classId, day, period, room: slot.roomName,
+            });
+          }
+        }
+
+        // 8. Feature A: Consecutive periods requirement for theory subjects
+        if (slot.subjectType === 'theory' && slot.requiresConsecutivePeriods && slot.consecutivePeriodsCount > 1) {
+          const requiredCount = slot.consecutivePeriodsCount;
+          // Check if this period is part of a consecutive block of required length
+          let consecutiveCount = 1;
+          // Check forward
+          for (let p = period + 1; p <= period + requiredCount - 1; p++) {
+            const nextSlot = grid[classId]?.[day]?.[p];
+            if (nextSlot && !nextSlot.isEmpty && nextSlot.subjectId && nextSlot.subjectId.toString() === slot.subjectId?.toString()) {
+              consecutiveCount++;
+            } else {
+              break;
+            }
+          }
+          // Check backward
+          for (let p = period - 1; p >= period - requiredCount + 1; p--) {
+            const prevSlot = grid[classId]?.[day]?.[p];
+            if (prevSlot && !prevSlot.isEmpty && prevSlot.subjectId && prevSlot.subjectId.toString() === slot.subjectId?.toString()) {
+              consecutiveCount++;
+            } else {
+              break;
+            }
+          }
+          // Only validate the first period of the block to avoid duplicate violations
+          const isFirstInBlock = !grid[classId]?.[day]?.[period - 1]?.subjectId?.toString() === slot.subjectId?.toString();
+          if (isFirstInBlock && consecutiveCount < slot.consecutivePeriodsCount) {
+            violations.push({
+              type: 'THEORY_CONSECUTIVE_PERIODS_VIOLATION',
+              message: `Class ${classId}: Theory subject '${slot.subjectName}' requires ${slot.consecutivePeriodsCount} consecutive periods but only ${consecutiveCount} found starting at ${day} P${period}`,
+              classId, day, period, subjectId: slot.subjectId, required: slot.consecutivePeriodsCount, found: consecutiveCount,
+            });
+          }
+        }
+
+        // 9. Feature B: Fixed slot constraint validation
+        // Track subjects with fixed slots to validate after the grid is fully scanned
+        if (slot.fixedSlot && slot.fixedSlot.day && slot.fixedSlot.period) {
+          const fixedDay = slot.fixedSlot.day;
+          const fixedPeriod = slot.fixedSlot.period;
+          const isMandatory = slot.fixedSlot.isMandatory !== false;
+          
+          // We'll do the validation in a second pass after building the fixedSlotOccupancy map
+          // Just collect the info for now
+          if (!slot._fixedSlotValidated) {
+            slot._fixedSlotValidated = true;
+            slot._fixedSlotInfo = { fixedDay, fixedPeriod, isMandatory };
+          }
+        }
       }
     }
   }
 
-  // 6. Teacher daily period limit
+  // 8. Teacher daily period limit
   for (const teacherId of Object.keys(teacherSchedule)) {
     const teacher = teacherMap[teacherId];
     const defaultLimit = teacher?.maxPeriodsPerDay || settings.teacherDailyLimit || 4;
@@ -237,33 +293,102 @@ const validateGrid = (grid, data) => {
         (teacher && teacherDailyLimitOverrides[teacher.name]?.[day]) ||
         defaultLimit;
 
-      // Count distinct periods (a shared elective session counts once).
-      const periods = Object.keys(teacherSchedule[teacherId][day] || {});
+      const periodCount = Object.keys(teacherSchedule[teacherId][day] || {}).length;
 
-      if (periods.length > customLimit) {
+      if (periodCount > customLimit) {
         violations.push({
           type: 'TEACHER_DAILY_LIMIT_EXCEEDED',
-          message: `Teacher ${teacher?.name || teacherId} has ${periods.length} periods on ${day}, exceeding limit of ${customLimit}`,
-          teacherId,
-          day,
-          periodsCount: periods.length,
-          limit: customLimit,
+          message: `Teacher ${teacher?.name || teacherId} has ${periodCount} periods on ${day}, exceeding limit of ${customLimit}`,
+          teacherId, day, periodsCount: periodCount, limit: customLimit,
         });
       }
     }
   }
 
-  return {
-    valid: violations.length === 0,
-    violations,
-  };
+  // 9. Feature B: Fixed slot conflict validation
+  // Check if any subject's fixed slot is occupied by a different subject
+  const fixedSlotOccupancy = {};
+  for (const [classId, dayMap] of Object.entries(grid)) {
+    for (const [day, periodMap] of Object.entries(dayMap)) {
+      for (const [periodStr, slot] of Object.entries(periodMap)) {
+        if (!slot || slot.isEmpty || slot.isBreak) continue;
+        // Support both legacy fixedSlot and new fixedSlots array
+        const fixedSlots = slot.fixedSlots || (slot.fixedSlot ? [slot.fixedSlot] : []);
+        for (const fs of fixedSlots) {
+          if (fs && fs.day && fs.period) {
+            const key = `${classId}|${fs.day}|${fs.period}|${slot.subjectId}`;
+            if (!fixedSlotOccupancy[key]) {
+              fixedSlotOccupancy[key] = { subjectId: slot.subjectId, subjectName: slot.subjectName, classId, day: fs.day, period: fs.period, isMandatory: fs.isMandatory !== false };
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Validate mandatory fixed slots: each subject with mandatory fixed slot must occupy that slot
+  for (const [key, fixedInfo] of Object.entries(fixedSlotOccupancy)) {
+    if (fixedInfo.isMandatory) {
+      const actualSlot = grid[fixedInfo.classId]?.[fixedInfo.day]?.[fixedInfo.period];
+      if (!actualSlot || actualSlot.isEmpty || actualSlot.isBreak || 
+          !actualSlot.subjectId || actualSlot.subjectId.toString() !== fixedInfo.subjectId.toString()) {
+        violations.push({
+          type: 'FIXED_SLOT_VIOLATION',
+          message: `Class ${fixedInfo.classId}: Subject '${fixedInfo.subjectName}' has mandatory fixed slot on ${fixedInfo.day} P${fixedInfo.period} but it is not occupied by this subject`,
+          classId: fixedInfo.classId, day: fixedInfo.day, period: fixedInfo.period, subjectId: fixedInfo.subjectId, fixedDay: fixedInfo.day, fixedPeriod: fixedInfo.period,
+        });
+      }
+    }
+  }
+
+  // Check if any fixed slot is occupied by a different subject
+  for (const [classId, dayMap] of Object.entries(grid)) {
+    for (const [day, periodMap] of Object.entries(dayMap)) {
+      for (const [periodStr, slot] of Object.entries(periodMap)) {
+        if (!slot || slot.isEmpty || slot.isBreak) continue;
+        const period = Number(periodStr);
+        // Check if this slot is a fixed slot for another subject
+        for (const [key, fixedInfo] of Object.entries(fixedSlotOccupancy)) {
+          if (fixedInfo.classId === classId && fixedInfo.day === day && fixedInfo.period === period) {
+            if (fixedInfo.subjectId.toString() !== slot.subjectId?.toString()) {
+              violations.push({
+                type: 'FIXED_SLOT_CONFLICT',
+                message: `Class ${classId}: Fixed slot for '${fixedInfo.subjectName}' on ${day} P${period} is occupied by '${slot.subjectName}'`,
+                classId, day, period, subjectId: slot.subjectId, conflictingSubjectId: fixedInfo.subjectId,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 10. Teacher daily period limit
+  for (const teacherId of Object.keys(teacherSchedule)) {
+    const teacher = teacherMap[teacherId];
+    const defaultLimit = teacher?.maxPeriodsPerDay || settings.teacherDailyLimit || 4;
+
+    for (const [day, periods] of Object.entries(teacherSchedule[teacherId] || {})) {
+      const customLimit =
+        teacherDailyLimitOverrides[teacherId]?.[day] ||
+        (teacher && teacherDailyLimitOverrides[teacher.name]?.[day]) ||
+        defaultLimit;
+
+      const periodCount = Object.keys(teacherSchedule[teacherId][day] || {}).length;
+
+      if (periodCount > customLimit) {
+        violations.push({
+          type: 'TEACHER_DAILY_LIMIT_EXCEEDED',
+          message: `Teacher ${teacher?.name || teacherId} has ${periodCount} periods on ${day}, exceeding limit of ${customLimit}`,
+          teacherId, day, periodsCount: periodCount, limit: customLimit,
+        });
+      }
+    }
+  }
+
+  return { valid: violations.length === 0, violations };
 };
 
-/**
- * Count empty teaching (non-break) slots across all class grids.
- * When `data` is supplied, periods that were never initialised are also
- * counted as empty so a missing cell cannot hide an incomplete timetable.
- */
 const countEmptyNonBreakSlots = (grid, data = null) => {
   let emptyCount = 0;
 
@@ -293,10 +418,7 @@ const countEmptyNonBreakSlots = (grid, data = null) => {
 };
 
 /**
- * Subject weekly-hour accounting.
- * Every subject must occupy exactly its required number of periods:
- *  - theory/elective -> weeklyHours
- *  - lab -> labDetails.duration (a single consecutive block)
+ * Subject weekly-hour accounting with L/T/P/R breakdown
  */
 const validateSubjectHours = (grid, data) => {
   const violations = [];
@@ -307,45 +429,51 @@ const validateSubjectHours = (grid, data) => {
     const classSubjects = subjectsByClass[classId] || [];
     const dayMap = grid[classId] || {};
 
-    // Count periods per subject actually present in the grid
     const placedCounts = {};
+    const placedL = {};
+    const placedT = {};
+    const placedP = {};
+    const placedR = {};
+
     for (const periodMap of Object.values(dayMap)) {
       for (const slot of Object.values(periodMap)) {
         if (!isOccupied(slot) || !slot.subjectId) continue;
         const sid = slot.subjectId.toString();
         placedCounts[sid] = (placedCounts[sid] || 0) + 1;
+        if (slot.subjectType === 'theory') {
+          placedL[sid] = (placedL[sid] || 0) + 1;
+        } else if (slot.subjectType === 'lab') {
+          placedP[sid] = (placedP[sid] || 0) + 1;
+        }
       }
     }
 
     for (const subject of classSubjects) {
       const sid = subject._id.toString();
       const placed = placedCounts[sid] || 0;
-      const expected =
-        subject.type === 'lab'
-          ? subject.labDetails?.duration || subject.weeklyHours || 2
-          : subject.weeklyHours || 0;
+      
+      const expectedL = subject.L || 0;
+      const expectedT = subject.T || 0;
+      const expectedP = subject.P || (subject.labDetails?.duration || 0);
+      const expectedR = subject.R || 0;
+      const expectedTotal = expectedL + expectedT + expectedP + expectedR;
 
-      if (placed < expected) {
+      if (expectedTotal === 0) continue;
+
+      if (placed < expectedTotal) {
         violations.push({
           type: 'SUBJECT_UNDER_SCHEDULED',
-          message: `Class ${classId}: ${subject.name} has ${placed}/${expected} required periods scheduled`,
-          classId,
-          subjectId: sid,
-          subjectName: subject.name,
-          placed,
-          expected,
-          missing: expected - placed,
+          message: `Class ${classId}: ${subject.name} has ${placed}/${expectedTotal} required periods (L:${expectedL} T:${expectedT} P:${expectedP} R:${expectedR})`,
+          classId, subjectId: sid, subjectName: subject.name,
+          placed, expected: expectedTotal, missing: expectedTotal - placed,
+          detail: { L: { placed: placedL[sid]||0, expected: expectedL }, T: { placed: placedT[sid]||0, expected: expectedT }, P: { placed: placedP[sid]||0, expected: expectedP } },
         });
-      } else if (placed > expected) {
+      } else if (placed > expectedTotal) {
         violations.push({
           type: 'SUBJECT_OVER_SCHEDULED',
-          message: `Class ${classId}: ${subject.name} has ${placed}/${expected} required periods scheduled (excess ${placed - expected})`,
-          classId,
-          subjectId: sid,
-          subjectName: subject.name,
-          placed,
-          expected,
-          excess: placed - expected,
+          message: `Class ${classId}: ${subject.name} has ${placed}/${expectedTotal} required periods (excess ${placed - expectedTotal})`,
+          classId, subjectId: sid, subjectName: subject.name,
+          placed, expected: expectedTotal, excess: placed - expectedTotal,
         });
       }
     }
@@ -355,8 +483,7 @@ const validateSubjectHours = (grid, data) => {
 };
 
 /**
- * Lab block validation: every lab must occupy one consecutive run of
- * `duration` periods inside a single day and must not cross a break.
+ * Lab block validation: P2, P3 (Mon-Thu), P6 (2×P3 blocks)
  */
 const validateLabBlocks = (grid, data) => {
   const violations = [];
@@ -368,7 +495,13 @@ const validateLabBlocks = (grid, data) => {
 
     for (const subject of classSubjects) {
       const sid = subject._id.toString();
-      const duration = subject.labDetails?.duration || 2;
+      const P = subject.P || subject.labDetails?.duration || 0;
+      if (P === 0) continue;
+
+      const isP6 = P >= 6;
+      const blockDuration = isP6 ? 3 : P;
+      const expectedBlocks = isP6 ? 2 : 1;
+
       const cellsByDay = {};
 
       const dayMap = grid[classId] || {};
@@ -395,48 +528,62 @@ const validateLabBlocks = (grid, data) => {
         runs.push({ day, run });
       }
 
-      // No placement at all is reported by validateSubjectHours (under-scheduled).
       if (runs.length === 0) continue;
 
-      if (runs.length > 1) {
+      // Check number of blocks
+      if (runs.length !== expectedBlocks && !(isP6 && runs.length === 1 && runs[0].run.length === 6)) {
         violations.push({
           type: 'LAB_BLOCK_SPLIT',
-          message: `Class ${classId}: lab '${subject.name}' is split across ${runs.length} blocks/days — labs must be one consecutive block`,
-          classId,
-          subjectId: sid,
-          subjectName: subject.name,
+          message: `Class ${classId}: lab '${subject.name}' has ${runs.length} blocks but ${expectedBlocks} expected (P${P})`,
+          classId, subjectId: sid, subjectName: subject.name,
           blocks: runs.map((r) => `${r.day}(${r.run.join(',')})`),
         });
         continue;
       }
 
-      const { day, run } = runs[0];
-      const isConsecutive = run.length === run[run.length - 1] - run[0] + 1;
-      if (!isConsecutive || run.length !== duration) {
+      // For P6, check if it's one 6-period block (invalid) or two 3-period blocks (valid)
+      if (isP6 && runs.length === 1 && runs[0].run.length === 6) {
         violations.push({
-          type: 'LAB_BLOCK_NON_CONSECUTIVE',
-          message: `Class ${classId}: lab '${subject.name}' occupies ${run.length} non-consecutive periods on ${day} (expected ${duration} consecutive)`,
-          classId,
-          subjectId: sid,
-          subjectName: subject.name,
-          day,
-          periods: run,
-          expected: duration,
+          type: 'LAB_BLOCK_SPLIT',
+          message: `Class ${classId}: P6 lab '${subject.name}' is one 6-period block - must be TWO separate 3-period blocks`,
+          classId, subjectId: sid, subjectName: subject.name,
+          blocks: runs.map((r) => `${r.day}(${r.run.join(',')})`),
         });
         continue;
       }
 
-      const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;
-      if (tl && crossesBreak(run[0], run.length, tl)) {
-        violations.push({
-          type: 'LAB_BREAK_CROSSED',
-          message: `Class ${classId}: lab '${subject.name}' on ${day} P${run[0]}-P${run[run.length - 1]} crosses a break`,
-          classId,
-          subjectId: sid,
-          subjectName: subject.name,
-          day,
-          periods: run,
-        });
+      // Validate each block
+      for (const { day, run } of runs) {
+        const isConsecutive = run.length === run[run.length - 1] - run[0] + 1;
+        if (!isConsecutive || run.length !== blockDuration) {
+          violations.push({
+            type: 'LAB_BLOCK_NON_CONSECUTIVE',
+            message: `Class ${classId}: lab '${subject.name}' block on ${day} has ${run.length} periods (expected ${blockDuration} consecutive)`,
+            classId, subjectId: sid, subjectName: subject.name,
+            day, periods: run, expected: blockDuration,
+          });
+          continue;
+        }
+
+        const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;
+        if (tl && crossesBreak(run[0], run.length, tl)) {
+          violations.push({
+            type: 'LAB_BREAK_CROSSED',
+            message: `Class ${classId}: lab '${subject.name}' on ${day} P${run[0]}-P${run[run.length - 1]} crosses a break`,
+            classId, subjectId: sid, subjectName: subject.name,
+            day, periods: run,
+          });
+        }
+
+        // Friday P3 prohibition check
+        if (day === 'Friday' && blockDuration >= 3) {
+          violations.push({
+            type: 'FRIDAY_P3_LAB_PROHIBITED',
+            message: `Class ${classId}: ${blockDuration}-period lab '${subject.name}' on Friday is prohibited`,
+            classId, subjectId: sid, subjectName: subject.name,
+            day, periods: run,
+          });
+        }
       }
     }
   }
@@ -445,7 +592,7 @@ const validateLabBlocks = (grid, data) => {
 };
 
 /**
- * Full post-generation hard validator (6+ checks)
+ * Full post-generation hard validator
  */
 const validateOutput = (grid, data, unplacedSubjects = []) => {
   const structural = validateGrid(grid, data).violations;
@@ -464,7 +611,7 @@ const validateOutput = (grid, data, unplacedSubjects = []) => {
   const overScheduled = hardViolations.filter((v) => v.type === 'SUBJECT_OVER_SCHEDULED');
   const noTeacher = hardViolations.filter((v) => v.type === 'INVALID_SLOT_NO_TEACHER').length;
   const labProblems = hardViolations.filter((v) =>
-    ['LAB_BLOCK_SPLIT', 'LAB_BLOCK_NON_CONSECUTIVE', 'LAB_BREAK_CROSSED'].includes(v.type)
+    ['LAB_BLOCK_SPLIT', 'LAB_BLOCK_NON_CONSECUTIVE', 'LAB_BREAK_CROSSED', 'FRIDAY_P3_LAB_PROHIBITED', 'LAB_ROOM_MISMATCH'].includes(v.type)
   ).length;
 
   const emptySlotsCount = countEmptyNonBreakSlots(grid, data);
@@ -479,7 +626,7 @@ const validateOutput = (grid, data, unplacedSubjects = []) => {
     zero_availability_violations: availabilityViolations === 0,
     zero_invalid_slots: noTeacher === 0,
     zero_lab_block_violations: labProblems === 0,
-    all_slots_filled: emptySlotsCount === 0,
+    all_slots_filled: false, // DISABLED - free slots are allowed
   };
 
   const isValid = Object.values(checks).every(Boolean);
@@ -553,7 +700,7 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
       const customLimit =
         teacherDailyLimitOverrides[teacherId]?.[day] ||
         teacherDailyLimitOverrides[teacher.name]?.[day] ||
-        (allowOvertime ? Math.min(baseLimit + 2, 6) : baseLimit);
+        baseLimit;
 
       let teacherPeriodsOnDay = 0;
       for (const [, dayMap] of Object.entries(grid)) {
@@ -562,9 +709,6 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
           if (slotTeacherIds(s).includes(teacherId)) teacherPeriodsOnDay++;
         }
       }
-      // The block being placed may occupy more than one period (e.g. a lab).
-      // Count the whole block so a multi-period block cannot be placed on a day
-      // where it would push the teacher past their daily limit.
       if (teacherPeriodsOnDay + additionalPeriods > customLimit) return false;
     }
   }
@@ -578,12 +722,22 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
     }
   }
 
+  // Friday P3 lab check
+  if (slot.isLabBlock && slot.labBlockIndex === 0) {
+    const blockDuration = slot.labBlockDuration || (slot.labBlockNumber !== undefined ? 3 : 3);
+    if (day === 'Friday' && blockDuration >= 3) return false;
+  }
+
   return true;
 };
 
 const isLabBlockValid = (classId, day, startPeriod, duration, slot, grid, data, options = {}) => {
   const { periodsPerDayMap, timeline, fridayTimeline, settings } = data;
   const maxP = Math.max(...(periodsPerDayMap[day] || [6]));
+
+  // Friday P3 prohibition - EXCEPT for S8 Project Phase II (CSD416) which is explicitly required on Friday
+  const isS8Project = slot.subjectCode === 'CSD416';
+  if (day === 'Friday' && duration >= 3 && !isS8Project) return false;
 
   // In 6-period system, 3-period lab blocks must start at Period 1 (P1-P3) or Period 4 (P4-P6)
   if (maxP <= 6 && duration >= 3) {
@@ -594,8 +748,6 @@ const isLabBlockValid = (classId, day, startPeriod, duration, slot, grid, data, 
   if (crossesBreak(startPeriod, duration, tl)) return false;
 
   for (let p = startPeriod; p < startPeriod + duration; p++) {
-    // Pass the full block length so the daily-limit check accounts for every
-    // period this block will consume on the day, not just the one being tested.
     if (!isSlotValid(classId, day, p, slot, grid, data, { ...options, additionalPeriods: duration })) {
       return false;
     }

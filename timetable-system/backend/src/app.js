@@ -19,6 +19,8 @@ const emailRoutes = require('./routes/email');
 const uploadRoutes = require('./routes/upload');
 const downloadRoutes = require('./routes/download');
 const studentRoutes = require('./routes/student');
+const electiveGroupRoutes = require('./routes/electiveGroups');
+const substitutionRoutes = require('./routes/substitutions');
 
 const app = express();
 
@@ -85,7 +87,9 @@ app.use('/api/email', emailRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/download', downloadRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api/elective-groups', electiveGroupRoutes);
 app.use('/api/overrides', require('./routes/overrides'));
+app.use('/api/substitutions', substitutionRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

@@ -2,10 +2,19 @@ const mongoose = require('mongoose');
 
 const classSchema = new mongoose.Schema(
   {
+    name: {
+      type: String,
+      trim: true,
+    },
     departmentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Department',
       required: true,
+    },
+    year: {
+      type: Number,
+      min: 1,
+      max: 4,
     },
     semester: {
       type: Number,
@@ -18,6 +27,16 @@ const classSchema = new mongoose.Schema(
       required: true,
       trim: true,
       uppercase: true,
+    },
+    roomNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    studentCount: {
+      type: Number,
+      default: 60,
+      min: 1,
     },
     strength: {
       type: Number,

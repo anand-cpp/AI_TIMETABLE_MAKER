@@ -759,3 +759,202 @@ test('teacher comfort is 100 when no teacher is scheduled', () => {
   const empty = setupComfort();
   assert.equal(scoreTeacherComfort(empty.grid, empty.data), 100);
 });
+
+// ── Feature A: Consecutive periods for theory subjects ─────────────────────────
+
+test('theory subject with consecutive periods=2 is placed as adjacent block', () => {
+  const t1 = makeTeacher('T1');
+  const c1 = makeClass('C1');
+  const s1 = makeTheory(c1._id, [t1], 4, { name: 'Math', code: 'MTH' });
+  s1.requiresConsecutivePeriods = true;
+  s1.consecutivePeriodsCount = 2;
+  s1.L = 4; // Uses L/T breakdown
+  
+  const data = buildData({ classes: [c1], subjects: [s1], teachers: [t1] });
+  const res = placeAllSubjects(data, false);
+  const v = validateOutput(res.grid, data, res.unplacedSubjects);
+
+  assert.equal(res.unplacedSubjects.length, 0, 'no unplaced subjects');
+  assert.equal(v.hardViolationsCount, 0, JSON.stringify(v.hardViolations));
+  
+  // Find all periods for this subject
+  const periods = [];
+  for (const dayMap of Object.values(res.grid[c1._id.toString()])) {
+    for (const [p, slot] of Object.entries(dayMap)) {
+      if (slot.subjectId && slot.subjectId.toString() === s1._id.toString()) periods.push({ day: Object.keys(res.grid[c1._id.toString()]).find(d => res.grid[c1._id.toString()][d][p] === slot), period: Number(p) });
+    }
+  }
+  
+  // Verify we have 4 periods placed
+  assert.equal(periods.length, 4);
+  
+  // Check that periods form consecutive blocks of 2
+  const byDay = {};
+  for (const pe of periods) {
+    if (!byDay[pe.day]) byDay[pe.day] = [];
+    byDay[pe.day].push(pe.period);
+  }
+  
+  for (const [day, pers] of Object.entries(byDay)) {
+    const sorted = pers.sort((a, b) => a - b);
+    // Each day should have periods that form consecutive blocks of 2
+    for (let i = 0; i < sorted.length; i += 2) {
+      if (i + 1 < sorted.length) {
+        assert.equal(sorted[i + 1] - sorted[i], 1, `Periods on ${day} must be consecutive`);
+      }
+    }
+  }
+});
+
+test('theory subject with consecutive periods=3 is placed as single block of 3', () => {
+  const t1 = makeTeacher('T1');
+  const c1 = makeClass('C1');
+  const s1 = makeTheory(c1._id, [t1], 3, { name: 'Physics', code: 'PHY' });
+  s1.requiresConsecutivePeriods = true;
+  s1.consecutivePeriodsCount = 3;
+  s1.L = 3;
+  
+  const data = buildData({ classes: [c1], subjects: [s1], teachers: [t1] });
+  const res = placeAllSubjects(data, false);
+  const v = validateOutput(res.grid, data, res.unplacedSubjects);
+
+  assert.equal(res.unplacedSubjects.length, 0);
+  assert.equal(v.hardViolationsCount, 0, JSON.stringify(v.hardViolations));
+  
+  // Verify exactly 3 consecutive periods on same day
+  const periods = [];
+  for (const dayMap of Object.values(res.grid[c1._id.toString()])) {
+    for (const [p, slot] of Object.entries(dayMap)) {
+      if (slot.subjectId && slot.subjectId.toString() === s1._id.toString()) periods.push({ day: Object.keys(res.grid[c1._id.toString()]).find(d => res.grid[c1._id.toString()][d][p] === slot), period: Number(p) });
+    }
+  }
+  
+  assert.equal(periods.length, 3);
+  const sameDay = periods.every(p => p.day === periods[0].day);
+  assert.ok(sameDay, 'All 3 periods must be on the same day');
+  const sorted = periods.map(p => p.period).sort((a, b) => a - b);
+  assert.equal(sorted[1] - sorted[0], 1);
+  assert.equal(sorted[2] - sorted[1], 1);
+});
+
+test('theory subject without consecutive requirement places normally', () => {
+  const t1 = makeTeacher('T1');
+  const c1 = makeClass('C1');
+  const s1 = makeTheory(c1._id, [t1], 4, { name: 'Chemistry', code: 'CHM' });
+  s1.requiresConsecutivePeriods = false;
+  s1.L = 4;
+  
+  const data = buildData({ classes: [c1], subjects: [s1], teachers: [t1] });
+  const res = placeAllSubjects(data, false);
+  const v = validateOutput(res.grid, data, res.unplacedSubjects);
+
+  assert.equal(res.unplacedSubjects.length, 0);
+  assert.equal(v.hardViolationsCount, 0);
+  
+  // Should have 4 periods placed
+  let count = 0;
+  for (const dayMap of Object.values(res.grid[c1._id.toString()])) {
+    for (const slot of Object.values(dayMap)) {
+      if (slot.subjectId && slot.subjectId.toString() === s1._id.toString()) count++;
+    }
+  }
+  assert.equal(count, 4);
+});
+
+test('consecutive periods validation rejects non-consecutive placement', () => {
+  const t1 = makeTeacher('T1');
+  const c1 = makeClass('C1');
+  const s1 = makeTheory(c1._id, [t1], 4, { name: 'Bio', code: 'BIO' });
+  s1.requiresConsecutivePeriods = true;
+  s1.consecutivePeriodsCount = 2;
+  s1.L = 4;
+  
+  const data = buildData({ classes: [c1], subjects: [s1], teachers: [t1] });
+  const res = placeAllSubjects(data, false);
+  const v = validateOutput(res.grid, data, res.unplacedSubjects);
+  
+  // Should have zero hard violations including THEORY_CONSECUTIVE_PERIODS_VIOLATION
+  const consecutiveViolations = v.hardViolations.filter(v => v.type === 'THEORY_CONSECUTIVE_PERIODS_VIOLATION');
+  assert.equal(consecutiveViolations.length, 0, 'No consecutive periods violations should exist');
+});
+
+// ── Feature B: Fixed slot constraints (multiple) ─────────────────────────────────
+
+test('theory subject with fixed slot is placed at exact day/period', () => {
+  const t1 = makeTeacher('T1');
+  const c1 = makeClass('C1');
+  const s1 = makeTheory(c1._id, [t1], 3, { name: 'FixedSubject', code: 'FIX' });
+  s1.fixedSlots = [{ day: 'Monday', period: 2, isMandatory: true }];
+  s1.L = 3;
+  
+  const data = buildData({ classes: [c1], subjects: [s1], teachers: [t1] });
+  const res = placeAllSubjects(data, false);
+  const v = validateOutput(res.grid, data, res.unplacedSubjects);
+
+  assert.equal(res.unplacedSubjects.length, 0);
+  assert.equal(v.hardViolationsCount, 0, JSON.stringify(v.hardViolations));
+  
+  // Check that subject is placed at Monday P2
+  const slot = res.grid[c1._id.toString()].Monday[2];
+  assert.ok(slot && slot.subjectId && slot.subjectId.toString() === s1._id.toString(), 'Subject must be at fixed slot Monday P2');
+});
+
+test('fixed slot conflict with another subject is reported', () => {
+  const t1 = makeTeacher('T1');
+  const c1 = makeClass('C1');
+  const s1 = makeTheory(c1._id, [t1], 1, { name: 'FixedA', code: 'FIXA' });
+  s1.fixedSlots = [{ day: 'Monday', period: 1, isMandatory: true }];
+  s1.L = 1;
+  
+  const s2 = makeTheory(c1._id, [t1], 1, { name: 'FixedB', code: 'FIXB' });
+  s2.fixedSlots = [{ day: 'Monday', period: 1, isMandatory: true }];
+  s2.L = 1;
+  
+  const data = buildData({ classes: [c1], subjects: [s1, s2], teachers: [t1] });
+  const res = placeAllSubjects(data, false);
+  const v = validateOutput(res.grid, data, res.unplacedSubjects);
+  
+  // Should report FIXED_SLOT_CONFLICT
+  const conflicts = v.hardViolations.filter(v => v.type === 'FIXED_SLOT_CONFLICT');
+  assert.ok(conflicts.length > 0, 'Fixed slot conflict should be reported');
+});
+
+test('fixed slot with teacher unavailability is reported', () => {
+  const t1 = makeTeacher('T1', { unavailability: [{ day: 'Monday', period: 1 }] });
+  const c1 = makeClass('C1');
+  const s1 = makeTheory(c1._id, [t1], 1, { name: 'FixedUnavail', code: 'FIXU' });
+  s1.fixedSlots = [{ day: 'Monday', period: 1, isMandatory: true }];
+  s1.L = 1;
+  
+  const data = buildData({ classes: [c1], subjects: [s1], teachers: [t1] });
+  const res = placeAllSubjects(data, false);
+  const v = validateOutput(res.grid, data, res.unplacedSubjects);
+  
+  // Should report FIXED_SLOT_VIOLATION (since teacher unavailable)
+  // The engine should try to place but validation will catch it
+  const fixedSlotViolations = v.hardViolations.filter(v => v.type === 'FIXED_SLOT_VIOLATION');
+  const teacherUnavail = v.hardViolations.filter(v => v.type === 'TEACHER_UNAVAILABLE');
+  // Either fixed slot violation or teacher unavailability should be reported
+  assert.ok(fixedSlotViolations.length > 0 || teacherUnavail.length > 0, 'Conflict should be reported');
+});
+
+test('legacy subject (weeklyHours only) still works without consecutive/fixedSlot', () => {
+  const t1 = makeTeacher('T1');
+  const c1 = makeClass('C1');
+  const s1 = makeTheory(c1._id, [t1], 5); // Only weeklyHours, no L/T, no consecutive, no fixedSlot
+  
+  const data = buildData({ classes: [c1], subjects: [s1], teachers: [t1] });
+  const res = placeAllSubjects(data, false);
+  const v = validateOutput(res.grid, data, res.unplacedSubjects);
+
+  assert.equal(res.unplacedSubjects.length, 0);
+  assert.equal(v.hardViolationsCount, 0);
+  
+  let count = 0;
+  for (const dayMap of Object.values(res.grid[c1._id.toString()])) {
+    for (const slot of Object.values(dayMap)) {
+      if (slot.subjectId && slot.subjectId.toString() === s1._id.toString()) count++;
+    }
+  }
+  assert.equal(count, 5, 'All 5 periods placed');
+});

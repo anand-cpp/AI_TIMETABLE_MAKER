@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
@@ -22,6 +23,7 @@ const Teachers = () => {
   const [credModalOpen, setCredModalOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState('');
+  const navigate = useNavigate();
 
   const load = async () => {
     try {
@@ -36,6 +38,10 @@ const Teachers = () => {
   };
 
   useEffect(() => { load(); }, []);
+
+  const handleViewProfile = (teacher) => {
+    navigate(`/admin/teachers/${teacher._id}/profile`);
+  };
 
   const handleOpenCreate = () => {
     setEditTarget(null);
@@ -153,6 +159,7 @@ const Teachers = () => {
           onEdit={handleOpenEdit}
           onDelete={setDeleteTarget}
           onShowCredentials={handleShowCredentials}
+          onViewProfile={handleViewProfile}
         />
       </div>
 

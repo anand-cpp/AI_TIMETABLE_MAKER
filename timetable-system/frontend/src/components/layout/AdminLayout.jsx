@@ -11,6 +11,7 @@ const pageTitles = {
   '/admin/classes': 'Class Sections',
   '/admin/teachers': 'Faculty Roster',
   '/admin/subjects': 'Subject Curriculum',
+  '/admin/elective-groups': 'Elective Groups',
   '/admin/timetable': 'Intelligent Timetable Builder',
   '/admin/settings': 'System Configurations',
   '/admin/suggestions': 'Faculty Feedback & Suggestions',
@@ -18,11 +19,15 @@ const pageTitles = {
   '/admin/upload': 'Document & OCR Processing',
 };
 
+const facultyProfileRegex = /^\/admin\/teachers\/[^/]+\/profile$/;
+
 const AdminLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
 
-  const title = pageTitles[location.pathname] || 'Admin Panel';
+  const title = facultyProfileRegex.test(location.pathname)
+    ? 'Faculty Profile'
+    : pageTitles[location.pathname] || 'Admin Panel';
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-200">

@@ -1,6 +1,7 @@
 const Subject = require('../models/Subject');
 const Class = require('../models/Class');
 const Teacher = require('../models/Teacher');
+const ElectiveGroup = require('../models/ElectiveGroup');
 const { sendSuccess, sendError } = require('../utils/responseHelpers');
 
 // ─── GET All Subjects ─────────────────────────────────────────────────────────
@@ -86,6 +87,10 @@ const validateSubjectData = async (body, existingSubjectId = null) => {
     teachers,
     labDetails,
     electiveDetails,
+    requiresConsecutivePeriods,
+    consecutivePeriodsCount,
+    fixedSlot,
+    fixedSlots,
   } = body;
 
   // Basic required fields
@@ -114,6 +119,22 @@ const validateSubjectData = async (body, existingSubjectId = null) => {
   if (type === 'theory') {
     if (!teachers || !Array.isArray(teachers) || teachers.length === 0) {
       errors.push('At least one teacher is required for theory subjects');
+    }
+
+    // Feature A: Consecutive periods validation
+    if (requiresConsecutivePeriods) {
+      if (consecutivePeriodsCount === undefined || consecutivePeriodsCount === null) {
+        errors.push('Consecutive periods count is required when consecutive scheduling is enabled');
+      } else {
+        const count = Number(consecutivePeriodsCount);
+        if (!Number.isInteger(count) || count < 2) {
+          errors.push('Consecutive periods count must be an integer >= 2');
+        }
+        // Cannot exceed max periods per day (typically 6)
+        if (count > 6) {
+          errors.push('Consecutive periods count cannot exceed 6');
+        }
+      }
     }
   }
 
@@ -177,6 +198,34 @@ const validateSubjectData = async (body, existingSubjectId = null) => {
     }
   }
 
+  // Feature B: Fixed slots validation (applies to all types)
+  const slotsToValidate = fixedSlots || (fixedSlot ? [fixedSlot] : []);
+  if (slotsToValidate.length > 0) {
+    const validDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const seen = new Set();
+    
+    for (let i = 0; i < slotsToValidate.length; i++) {
+      const slot = slotsToValidate[i];
+      if (!slot || !slot.day || slot.period === undefined || slot.period === null) continue;
+      
+      if (!validDays.includes(slot.day)) {
+        errors.push(`Fixed slot ${i + 1}: day must be one of: ${validDays.join(', ')}`);
+      }
+      
+      const period = Number(slot.period);
+      if (!Number.isInteger(period) || period < 1 || period > 10) {
+        errors.push(`Fixed slot ${i + 1}: period must be an integer between 1 and 10`);
+      }
+      
+      // Check for duplicates
+      const key = `${slot.day}-${period}`;
+      if (seen.has(key)) {
+        errors.push(`Fixed slot ${i + 1}: duplicate day-period combination (${slot.day} Period ${period})`);
+      }
+      seen.add(key);
+    }
+  }
+
   return errors;
 };
 
@@ -192,7 +241,14 @@ const buildSubjectData = (body) => {
     labDetails,
     electiveDetails,
     isElective,
+    requiresConsecutivePeriods,
+    consecutivePeriodsCount,
+    fixedSlot,
+    fixedSlots,
   } = body;
+
+  // Support both single fixedSlot (legacy) and fixedSlots (new multiple)
+  const slotsToUse = fixedSlots || (fixedSlot ? [fixedSlot] : []);
 
   const subjectData = {
     name: name.trim(),
@@ -202,6 +258,17 @@ const buildSubjectData = (body) => {
     weeklyHours: type === 'lab' ? null : Number(weeklyHours),
     teachers: teachers || [],
     isElective: type === 'elective' || isElective || false,
+    // Feature A: Consecutive periods
+    requiresConsecutivePeriods: requiresConsecutivePeriods || false,
+    consecutivePeriodsCount: requiresConsecutivePeriods ? Number(consecutivePeriodsCount) || 1 : 1,
+    // Feature B: Fixed slots (multiple)
+    fixedSlots: slotsToUse
+      .filter(s => s && s.day && s.period !== undefined && s.period !== null)
+      .map(s => ({
+        day: s.day,
+        period: Number(s.period),
+        isMandatory: s.isMandatory !== false,
+      })),
   };
 
   if (type === 'lab' && labDetails) {
@@ -252,6 +319,34 @@ const createSubject = async (req, res) => {
     await Class.findByIdAndUpdate(classId, {
       $addToSet: { subjects: subject._id },
     });
+
+    // Link subject to elective group if electiveGroupId or electiveGroupContext is provided
+    const electiveGroupId = req.body.electiveGroupId || (req.body.electiveGroupContext && req.body.electiveGroupContext.groupId);
+    if (electiveGroupId) {
+      try {
+        const group = await ElectiveGroup.findById(electiveGroupId);
+        if (group) {
+          // Check if subject is already in group options
+          const alreadyInGroup = group.options.some(
+            (opt) => opt.subjectId?.toString() === subject._id.toString()
+          );
+          if (!alreadyInGroup) {
+            group.options.push({
+              subjectId: subject._id,
+              teacherIds: subject.teachers || [],
+              weeklyHours: subject.weeklyHours || 1,
+            });
+            await group.save();
+          }
+          // Update subject with group reference
+          subject.electiveDetails.electiveGroupId = group._id;
+          subject.electiveDetails.optionIndex = group.options.length - 1;
+          await subject.save();
+        }
+      } catch (groupError) {
+        console.error('Failed to link subject to elective group:', groupError);
+      }
+    }
 
     const populated = await Subject.findById(subject._id)
       .populate('classId', 'semester section')
@@ -361,6 +456,10 @@ const updateSubject = async (req, res) => {
       teachers,
       labDetails,
       electiveDetails,
+      requiresConsecutivePeriods,
+      consecutivePeriodsCount,
+      fixedSlot,
+      fixedSlots,
     } = req.body;
 
     // Validate with existing type (type cannot be changed)
@@ -379,6 +478,24 @@ const updateSubject = async (req, res) => {
     if (code !== undefined) updateData.code = code.trim().toUpperCase();
     if (weeklyHours !== undefined) updateData.weeklyHours = Number(weeklyHours);
     if (teachers !== undefined) updateData.teachers = teachers;
+
+    // Feature A: Consecutive periods
+    if (requiresConsecutivePeriods !== undefined) {
+      updateData.requiresConsecutivePeriods = requiresConsecutivePeriods;
+      updateData.consecutivePeriodsCount = requiresConsecutivePeriods ? Number(consecutivePeriodsCount) || 1 : 1;
+    }
+
+    // Feature B: Fixed slots (multiple)
+    const slotsToUse = fixedSlots || (fixedSlot ? [fixedSlot] : []);
+    if (fixedSlots !== undefined || fixedSlot !== undefined) {
+      updateData.fixedSlots = slotsToUse
+        .filter(s => s && s.day && s.period !== undefined && s.period !== null)
+        .map(s => ({
+          day: s.day,
+          period: Number(s.period),
+          isMandatory: s.isMandatory !== false,
+        }));
+    }
 
     if (labDetails !== undefined && subject.type === 'lab') {
       updateData.labDetails = {
