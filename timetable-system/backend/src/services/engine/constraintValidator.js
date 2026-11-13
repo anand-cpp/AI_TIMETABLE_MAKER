@@ -1,4 +1,5 @@
 const { crossesBreak } = require('../../utils/timeHelpers');
+const { validateLabEligibility } = require('./labValidationService');
 
 /**
  * Checks whether two period numbers are consecutive teaching periods without a rest/lunch boundary.
@@ -293,42 +294,21 @@ const validateGrid = (grid, data) => {
 
         // 7. Strict Laboratory Allocation Matrix
         const roomName = (slot.roomName || '').trim();
-        if (roomName.toLowerCase().startsWith('lab')) {
+        if (roomName.toLowerCase().startsWith('lab') || slot.isLabBlock || (slot.subjectCode && ['CST416', 'CSD416'].includes(slot.subjectCode))) {
           const classSem = slot.classSemester || data.classMap?.[classId]?.semester || 0;
-          const isProjectPhase2 = slot.subjectCode?.includes('416') || slot.subjectName?.includes('Project Phase');
-
-          if (classSem === 1 || classSem === 2) {
-            // S1/S2 practicals: Lab 1, Lab 2, Lab 3 only. Prohibit Lab 4.
-            if (roomName === 'Lab 4' && !slot.isOverride) {
-              violations.push({
-                type: 'INVALID_LAB_ASSIGNMENT',
-                severity: 'hard',
-                message: `Class ${classId} (Semester ${classSem}): '${slot.subjectName || slot.subjectCode}' is assigned to Lab 4, but S1/S2 practical sessions are restricted to Lab 1, Lab 2, or Lab 3`,
-                classId, day, period, room: roomName, semester: classSem,
-              });
-            }
-          } else if (classSem >= 3 && classSem <= 8) {
-            if (isProjectPhase2) {
-              // S8 Project Phase-2 takes place in classrooms, not exclusive Lab 1/2/3/4
-              if (['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'].includes(roomName) && !slot.isOverride) {
-                violations.push({
-                  type: 'INVALID_LAB_ASSIGNMENT',
-                  severity: 'hard',
-                  message: `Class ${classId} (Semester ${classSem}): Capstone Project '${slot.subjectName}' occupies ${roomName}, which is reserved for scheduled practical laboratory sessions`,
-                  classId, day, period, room: roomName, semester: classSem,
-                });
-              }
-            } else {
-              // S3-S8 applicable practicals and Mini Projects MUST use Lab 4. Prohibit Lab 1, Lab 2, Lab 3.
-              if (roomName !== 'Lab 4' && !slot.isOverride) {
-                violations.push({
-                  type: 'INVALID_LAB_ASSIGNMENT',
-                  severity: 'hard',
-                  message: `Class ${classId} (Semester ${classSem}): '${slot.subjectName || slot.subjectCode}' is assigned to ${roomName}, but all applicable practicals for S3–S8 must use designated Lab 4`,
-                  classId, day, period, room: roomName, semester: classSem,
-                });
-              }
-            }
+          const elig = validateLabEligibility(classSem, roomName, slot, slot);
+          if (!elig.valid && !slot.isOverride) {
+            violations.push({
+              type: 'INVALID_LAB_ASSIGNMENT',
+              severity: 'hard',
+              message: `Class ${classId} (Semester ${classSem}): ${elig.reason}`,
+              classId,
+              day,
+              period,
+              room: roomName,
+              semester: classSem,
+              permittedRooms: elig.permittedRooms,
+            });
           }
         }
 
@@ -1205,12 +1185,10 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
   }
 
   for (const room of slotRoomNames(slot)) {
-    if (room.toLowerCase().startsWith('lab')) {
+    if (room.toLowerCase().startsWith('lab') || slot.isLabBlock || (slot.subjectCode && ['CST416', 'CSD416'].includes(slot.subjectCode))) {
       const classSem = slot.classSemester || data.classMap?.[classId]?.semester || 0;
-      const isProjectPhase2 = slot.subjectCode === 'CSD416' || slot.subjectCode === 'CST416' || slot.subjectName?.includes('Project Phase');
-      if ((classSem === 1 || classSem === 2) && room === 'Lab 4') return false;
-      if (classSem >= 3 && classSem <= 8 && !isProjectPhase2 && room !== 'Lab 4') return false;
-      if (classSem >= 3 && classSem <= 8 && isProjectPhase2 && ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'].includes(room)) return false;
+      const elig = validateLabEligibility(classSem, room, slot, slot);
+      if (!elig.valid && !slot.isOverride) return false;
     }
 
     for (const [otherClassId, dayMap] of Object.entries(grid)) {

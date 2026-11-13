@@ -590,11 +590,11 @@ const placeLabSubject = (subject, classId, grid, data, randomize = false, option
   if (isProjectPhase2) {
     roomsToTry = [clsName.includes(' B') ? 'Room 502' : 'Room 501'];
   } else if (classSem === 1 || classSem === 2) {
-    // S1 / S2: Lab 1, Lab 2, Lab 3 only. Prohibit Lab 4.
+    // S1 / S2: Lab 1, Lab 2 only. Prohibit Lab 3 and Lab 4 for regular practicals.
     if (isMiniProject) {
       roomsToTry = ['Lab 3'];
     } else {
-      roomsToTry = ['Lab 1', 'Lab 2', 'Lab 3'];
+      roomsToTry = ['Lab 1', 'Lab 2'];
     }
   } else if (classSem >= 3 && classSem <= 8) {
     // S3 through S8 practicals & Mini Projects: designated Lab 4 only. Prohibit Lab 1, 2, 3.

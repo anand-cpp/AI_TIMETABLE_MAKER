@@ -2,6 +2,7 @@ const { loadData } = require('./dataLoader');
 const { validateOutput } = require('./constraintValidator');
 const { validateGlobalTimetable } = require('./globalTimetableValidator');
 const { validateDailySubjectLimit } = require('./dailySubjectLimitValidator');
+const { validateGlobalLabOccupancy } = require('./labValidationService');
 
 /**
  * Rebuild an engine-style grid from a persisted timetable document, then run the
@@ -115,13 +116,17 @@ const validatePersistedTimetable = async (timetable) => {
     periods: v.periods
   }));
 
+  const labAudit = validateGlobalLabOccupancy(grid, presentClasses);
+  const labHard = labAudit.violations || [];
+
   const hardViolations = [
     ...result.hardViolations,
     ...missingClassViolations,
     ...globalHard.map(v => ({ ...v, type: v.type || v.code })),
     ...dailyViolations,
+    ...labHard,
   ];
-  const valid = result.valid && missingClassViolations.length === 0 && globalHard.length === 0 && dailyViolations.length === 0;
+  const valid = result.valid && missingClassViolations.length === 0 && globalHard.length === 0 && dailyViolations.length === 0 && labHard.length === 0;
 
   return {
     ...result,
