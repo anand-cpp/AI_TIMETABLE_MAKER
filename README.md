@@ -105,13 +105,18 @@ flowchart TD
 - **Section Synchronization**: S4 CSE A and S4 CSE B receive 100% identical Minor-track day and period slots.
 - **Sub-Minor Parallelism**: Within each synchronized Minor slot, parallel sub-minor tracks (`Minor / OS`, `Minor / DBMS`, `Minor / COA`, `Minor / Mathematics`) run concurrently without teacher collisions.
 
-### 3. Institutional Laboratory Allocation Matrix
-- **Semester 1 & 2 Practicals**: Strictly restricted to `Lab 1`, `Lab 2`, or `Lab 3`. Practicals for S1/S2 are prohibited from occupying `Lab 4`.
-- **Semester 3 to 8 Practicals & Mini-Projects**: Strictly assigned to designated `Lab 4`. Practicals for S3–S8 are prohibited from using `Lab 1`, `Lab 2`, or `Lab 3`.
-- **Single-Occupancy Lab 4**: The engine enforces absolute zero double-booking for `Lab 4`. No two classes can occupy Lab 4 simultaneously.
-- **S8 Capstone Project Phase-2 (`CST416`/`CSD416`)**:
-  - Assigned dedicated physical classrooms: `Room 501` (S8 CSE A) and `Room 502` (S8 CSE B) on Thursday (Periods 1–6) and Friday (Periods 1–6).
-  - Supervised by Dr. S Gunasekaran, assisted by the `Project Committee` on P3 & P6 (Thu) and P3 & P4 (Fri) to respect the 2-period rest gap limit.
+### 3. Mandatory Institutional Laboratory Allocation Matrix
+- **Exact Semester Eligibility Policy**:
+  | Academic Activity | Permitted Laboratory | Strict Prohibitions |
+  | :--- | :--- | :--- |
+  | **S1 Regular Practicals** | `Lab 1` or `Lab 2` | Prohibited from `Lab 3` and `Lab 4` |
+  | **S2 Regular Practicals** | `Lab 1` or `Lab 2` | Prohibited from `Lab 3` and `Lab 4` |
+  | **S1/S2 Mini Projects** | `Lab 3` | Prohibited from `Lab 1`, `Lab 2`, and `Lab 4` |
+  | **S3–S8 Regular Practicals** | `Lab 4` | Prohibited from `Lab 1`, `Lab 2`, and `Lab 3` |
+  | **S3–S8 Mini Projects** | `Lab 4` | Prohibited from `Lab 1`, `Lab 2`, and `Lab 3` |
+  | **S8 Capstone Project Phase-2** | Dedicated `Room 501` / `Room 502` | Prohibited from all scheduled laboratories (`Lab 1–4`) |
+- **Full-Duration Multi-Period Occupancy**: Multi-period practicals reserve the designated laboratory across their entire duration (e.g. P1–P3 or P4–P6). Partial reservations or mid-session intrusions are strictly blocked.
+- **Absolute Global Double-Booking Prevention**: Centralized `labValidationService.js` enforces single-occupancy across all classes, sections, and departments simultaneously.
 
 ### 4. Mandatory Elective Basket Synchronization
 - Paired sections sharing an elective basket (e.g., S4 Professional Elective 1, S8 Electives) are locked into identical day and period coordinates.
@@ -143,6 +148,37 @@ flowchart TD
 - **RESTful Endpoints**: Full CRUD support (`create`, `update`, `getById`) in `teacherService.js` and `teacherController.js`.
 - **Field Support**: Supports `designation`, `maxPeriodsPerWeek`, and `unavailability`.
 - **Faculty Name Correction**: Corrected `Mr Sangeeth` to `Ms Sangeetha` across all MongoDB records, active timetable snapshots, and JSON caches.
+
+### 10. Automatic Pre-Publication Analysis & Conflict Repair Engine
+The scheduler does not merely generate a timetable and display errors—it takes active responsibility for diagnosing and solving scheduling conflicts:
+```
+SOURCE DATA
+→ REQUIREMENT VALIDATION
+→ INITIAL TIMETABLE GENERATION
+→ COMPLETE CONSTRAINT ANALYSIS
+→ AUTOMATIC CONFLICT DETECTION
+→ AUTOMATIC REPAIR
+→ RE-OPTIMIZATION
+→ INDEPENDENT VALIDATION
+→ FINAL MATHEMATICAL AUDIT
+→ PUBLICATION DECISION
+→ DISPLAY FINAL TIMETABLE
+```
+- **Automated Repair Engine (`conflictRepairEngine.js`)**:
+  - Automatically identifies root causes of hard conflicts.
+  - Explores candidate valid repairs using domain pruning and bounded backtracking.
+  - Executes atomic lab room reassignments, lab block relocations, teacher presence staggering, and intra-class theory swaps.
+  - Evaluates every candidate for safety—never introduces new hard conflicts.
+  - Maintains a full audit trail of all repairs attempted and applied.
+
+### 11. Independent Final Validation & Publication Gate
+- **Authoritative Independent Ground-Truth Validator (`independentValidator.js`)**:
+  - Reconstructs faculty, laboratory, section, and room occupancy maps from scratch directly from final allocation records.
+  - Compares scheduled contact hours against authoritative syllabus curriculum requirements.
+  - Strictly enforces the three publication gate outcomes:
+    - **Outcome A — Fully Valid**: All hard constraints pass, all syllabus contact hours satisfied, independent audit passes -> **Publishable**.
+    - **Outcome B — Partially Feasible**: Some requirements cannot be satisfied within budget -> clearly identifies missing allocations and reasons -> **Publication Blocked**.
+    - **Outcome C — Infeasible**: Mathematical contradiction or conflicting data prevents finding a valid solution -> **Publication Blocked**.
 
 ---
 
@@ -214,20 +250,35 @@ npm run dev
 
 ## Verification & Automated Test Suite
 
-Run the master verification suite to test all institutional scheduling constraints:
+Run the master verification suite and mandatory laboratory/repair regression suite:
 
 ```bash
+# 1. Run the 7-Point Master Institutional Verification Suite
 node scripts/master_verification_suite.js
+
+# 2. Run the 23-Point Mandatory Lab Allocation & Automatic Repair Test Suite
+cd timetable-system/backend
+node --test tests/mandatory_lab_and_auto_repair.test.js
 ```
 
 ### Test Suite Coverage:
-1. **Faculty Rest Gap**: Confirms lunch boundary separation and rejects $\ge 3$ consecutive periods.
-2. **Dynamic Minor Sync**: Verifies identical Minor slots between S4 CSE A and S4 CSE B without faculty collisions.
-3. **Laboratory Matrix**: Enforces Lab 1–3 for S1/S2 and Lab 4 for S3–S8.
-4. **Faculty Name Correction**: Confirms Ms. Sangeetha is updated with 0 duplicates.
-5. **Teacher Profile Service**: Validates `teacherService.create`/`update` and Edit Profile modal.
-6. **Realistic Quality Scoring**: Ensures scores are mathematically deducted and never falsely 100/100.
-7. **Diagnostics UI**: Verifies interactive diagnostic explanations and resolutions.
+1. **Mandatory Laboratory Matrix (Part 8.1 - 17 Tests)**:
+   - S1/S2 regular practicals in `Lab 1` or `Lab 2` -> PASS; `Lab 3` or `Lab 4` -> FAIL.
+   - S1/S2 Mini Projects in `Lab 3` -> PASS; `Lab 1`, `Lab 2`, or `Lab 4` -> FAIL.
+   - S3–S8 regular practicals in `Lab 4` -> PASS; `Lab 1`, `Lab 2`, or `Lab 3` -> FAIL.
+   - S3–S8 Mini Projects in `Lab 4` -> PASS; `Lab 1`, `Lab 2`, or `Lab 3` -> FAIL.
+   - Simultaneous double-booking of any laboratory -> FAIL.
+   - Multi-period practical collision in 2nd or 3rd period -> FAIL.
+2. **Automatic Conflict Resolution & Repair (Part 8.2 - 3 Tests)**:
+   - Automatically repairs injected invalid laboratory assignments to permitted laboratories.
+   - Automatically repairs faculty rest-gap violations ($\ge 3$ consecutive periods) via teacher presence staggering and intra-class slot exchanges.
+   - Detects mathematically impossible scenarios and safely triggers **Outcome C (Infeasible)** without fabricating invalid timetables.
+3. **Full Pre-Publication Generation & Validation Pipeline (Part 8.3)**:
+   - Executes all 8 stages: Requirement Validation -> Initial Placement -> Constraint Analysis -> Conflict Detection -> Automatic Repair -> Re-Optimization -> Independent Validation -> Publication Gate Decision.
+4. **Faculty Rest Gap & Lunch Reset**: Confirms lunch boundary separation and rejects $\ge 3$ consecutive periods globally.
+5. **Dynamic Minor Sync**: Verifies 100% identical Minor slots between S4 CSE A and S4 CSE B.
+6. **Teacher Profile Management**: Validates `teacherService.create`/`update` and Edit Profile modal.
+7. **Realistic Quality Scoring & Interactive Conflict Diagnostics UI**: Ensures scores are mathematically deducted and badges provide interactive explanations with root causes and resolutions.
 
 ---
 
