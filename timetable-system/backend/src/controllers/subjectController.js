@@ -65,7 +65,7 @@ const getLabRooms = async (req, res) => {
       'labDetails.batch2Room': { $ne: '' },
     });
 
-    const allRooms = [...new Set([...rooms, ...batch1Rooms, ...batch2Rooms])]
+    const allRooms = [...new Set(['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4', ...rooms, ...batch1Rooms, ...batch2Rooms])]
       .filter(Boolean)
       .sort();
 
@@ -272,8 +272,17 @@ const buildSubjectData = (body) => {
   };
 
   if (type === 'lab' && labDetails) {
+    const rawAllowed = labDetails.allowedLabs || body.allowedLabs;
+    const allowed = Array.isArray(rawAllowed) && rawAllowed.length > 0
+      ? rawAllowed
+      : (labDetails.roomName ? [labDetails.roomName] : ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4']);
+
+    const primaryRoom = labDetails.roomName || allowed[0] || 'Lab 4';
+    subjectData.allowedLabs = allowed;
+    subjectData.labRoom = primaryRoom;
     subjectData.labDetails = {
-      roomName: labDetails.roomName || '',
+      roomName: primaryRoom,
+      allowedLabs: allowed,
       duration: Number(labDetails.duration) || 2,
       isBatchSplit: labDetails.isBatchSplit || false,
       batch1Teacher: labDetails.batch1Teacher || null,
@@ -498,8 +507,17 @@ const updateSubject = async (req, res) => {
     }
 
     if (labDetails !== undefined && subject.type === 'lab') {
+      const rawAllowed = labDetails.allowedLabs || req.body.allowedLabs;
+      const allowed = Array.isArray(rawAllowed) && rawAllowed.length > 0
+        ? rawAllowed
+        : (labDetails.roomName ? [labDetails.roomName] : (subject.allowedLabs?.length ? subject.allowedLabs : ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4']));
+
+      const primaryRoom = labDetails.roomName || allowed[0] || 'Lab 4';
+      updateData.allowedLabs = allowed;
+      updateData.labRoom = primaryRoom;
       updateData.labDetails = {
-        roomName: labDetails.roomName || '',
+        roomName: primaryRoom,
+        allowedLabs: allowed,
         duration: Number(labDetails.duration) || 2,
         isBatchSplit: labDetails.isBatchSplit || false,
         batch1Teacher: labDetails.batch1Teacher || null,

@@ -20,6 +20,7 @@ const uploadRoutes = require('./routes/upload');
 const downloadRoutes = require('./routes/download');
 const studentRoutes = require('./routes/student');
 const electiveGroupRoutes = require('./routes/electiveGroups');
+const minorGroupRoutes = require('./routes/minorGroups');
 const substitutionRoutes = require('./routes/substitutions');
 
 const app = express();
@@ -88,6 +89,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/download', downloadRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/elective-groups', electiveGroupRoutes);
+app.use('/api/minor-groups', minorGroupRoutes);
 app.use('/api/overrides', require('./routes/overrides'));
 app.use('/api/substitutions', substitutionRoutes);
 
