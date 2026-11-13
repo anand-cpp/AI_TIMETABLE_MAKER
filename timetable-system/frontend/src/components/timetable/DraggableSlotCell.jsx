@@ -6,6 +6,10 @@ const DraggableSlotCell = ({
   onClick,
   isSelected,
   isSwapSource,
+  isSwapCompatible,
+  isSwapConflict,
+  isSwapIncompatible,
+  swapReason,
   isDiagnosticFocus,
   showActions,
   readonly,
@@ -48,6 +52,10 @@ const DraggableSlotCell = ({
       onClick={onClick}
       isSelected={isSelected}
       isSwapSource={isSwapSource}
+      isSwapCompatible={isSwapCompatible}
+      isSwapConflict={isSwapConflict}
+      isSwapIncompatible={isSwapIncompatible}
+      swapReason={swapReason}
       isDiagnosticFocus={isDiagnosticFocus}
       showActions={showActions}
       readonly={readonly}

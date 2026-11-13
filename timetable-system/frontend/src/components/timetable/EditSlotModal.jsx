@@ -9,6 +9,7 @@ import {
   Unlock,
   Trash2,
   Info,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 const EditSlotModal = ({
@@ -18,6 +19,7 @@ const EditSlotModal = ({
   timetableId,
   classId,
   onUpdate,
+  onStartSwap,
 }) => {
   const [loading, setLoading] = useState(false);
 
@@ -145,6 +147,21 @@ const EditSlotModal = ({
             <p className="text-xs font-black text-slate-400 uppercase tracking-widest">
               Actions
             </p>
+
+            {/* Swap with another period */}
+            {!isEmpty && !isLocked && onStartSwap && (
+              <Button
+                fullWidth
+                variant="primary"
+                onClick={() => {
+                  onStartSwap(slot);
+                  onClose();
+                }}
+                leftIcon={<ArrowLeftRight className="w-4 h-4" />}
+              >
+                Swap with Another Period...
+              </Button>
+            )}
 
             {/* Lock / Unlock */}
             {!isEmpty && (

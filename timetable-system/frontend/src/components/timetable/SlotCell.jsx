@@ -6,6 +6,10 @@ const SlotCell = ({
   onClick,
   isSelected,
   isSwapSource,
+  isSwapCompatible,
+  isSwapConflict,
+  isSwapIncompatible,
+  swapReason,
   isDiagnosticFocus,
   showActions,
   dragRef,
@@ -63,9 +67,13 @@ const SlotCell = ({
           isDiagnosticFocus && 'ring-4 ring-rose-500 bg-rose-500/20 shadow-xl animate-pulse z-30',
           isOver && 'ring-2 ring-inset ring-[var(--accent)] bg-[var(--accent-soft)] border-2 border-dashed border-[var(--accent)] z-20',
           isSelected && !isSwapSource && !isDiagnosticFocus && 'ring-2 ring-inset ring-[var(--accent)] bg-[var(--accent-soft)]',
-          isSwapSource && 'ring-2 ring-inset ring-amber-500 bg-amber-500/20 shadow-md z-20 animate-pulse'
+          isSwapSource && 'ring-2 ring-inset ring-amber-500 bg-amber-500/20 shadow-md z-20 animate-pulse',
+          isSwapCompatible && 'ring-2 ring-inset ring-emerald-500 bg-emerald-500/15 border-emerald-500 shadow-sm z-20',
+          isSwapConflict && 'ring-1 ring-inset ring-amber-500/60 bg-amber-500/10 z-10',
+          isSwapIncompatible && 'opacity-40 cursor-not-allowed'
         )}
         onClick={() => onClick?.(slot)}
+        title={swapReason || ''}
       >
         <div className="w-full h-full min-h-[56px] flex items-center justify-center pointer-events-none">
           {isOver ? (
@@ -75,6 +83,14 @@ const SlotCell = ({
           ) : isSwapSource ? (
             <span className="text-[10px] font-sans font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-amber-500 shadow-sm">
               Selected
+            </span>
+          ) : isSwapCompatible ? (
+            <span className="text-[10px] font-sans font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-emerald-500 shadow-sm animate-pulse">
+              Swap Here
+            </span>
+          ) : isSwapConflict ? (
+            <span className="text-[10px] font-sans font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-amber-500 shadow-sm">
+              Auto-Adjust
             </span>
           ) : showActions ? (
             <span className="text-xs text-[var(--text-muted)] group-hover:text-[var(--accent)]">
@@ -107,6 +123,9 @@ const SlotCell = ({
     isDiagnosticFocus && 'ring-4 ring-rose-500 shadow-xl animate-pulse z-30 bg-rose-500/10',
     isLabGroupActive && !isDiagnosticFocus && 'ring-2 ring-inset ring-indigo-500 bg-indigo-500/15 shadow-sm z-10',
     isSwapSource && !isDiagnosticFocus && 'ring-2 ring-inset ring-amber-500 bg-amber-500/20 shadow-md z-20 animate-pulse',
+    isSwapCompatible && !isDiagnosticFocus && 'ring-2 ring-inset ring-emerald-500 bg-emerald-500/20 border-emerald-500 shadow-sm z-20 cursor-pointer',
+    isSwapConflict && !isDiagnosticFocus && 'ring-1 ring-inset ring-amber-500/60 bg-amber-500/10 z-10 cursor-pointer',
+    isSwapIncompatible && !isDiagnosticFocus && 'opacity-40 cursor-not-allowed',
     isSelected && !isSwapSource && !isDiagnosticFocus && 'ring-2 ring-inset ring-[var(--accent)]',
     isDragging && 'opacity-40 border-2 border-dashed border-[var(--accent)] bg-[var(--accent-soft)]/20',
     isOver && 'ring-2 ring-inset ring-[var(--accent)] bg-[var(--accent-soft)] border-2 border-dashed border-[var(--accent)] z-20'
@@ -143,7 +162,19 @@ const SlotCell = ({
       onClick={() => onClick?.(slot)}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      title={swapReason || ''}
     >
+      {/* 🔄 Click-to-Swap / Conflict Status Badges */}
+      {isSwapCompatible && (
+        <span className="absolute top-1 right-1 z-20 text-[9px] font-sans font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-1 py-0.5 rounded border border-emerald-400 shadow-sm animate-pulse">
+          Swap
+        </span>
+      )}
+      {isSwapConflict && (
+        <span className="absolute top-1 right-1 z-20 text-[9px] font-sans font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-1 py-0.5 rounded border border-amber-400 shadow-sm" title={swapReason}>
+          Adjust
+        </span>
+      )}
       {/* ⚡ Override Marker Badge */}
       {slot.isOverride && (
         <div

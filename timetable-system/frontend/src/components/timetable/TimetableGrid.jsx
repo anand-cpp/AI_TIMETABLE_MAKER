@@ -149,6 +149,8 @@ const TimetableGrid = ({
   diagnosticHighlight = null,
   onClearDiagnosticHighlight,
   onNavigateToClass,
+  swapSourceSlot: externalSwapSourceSlot,
+  onSwapSourceChange,
 }) => {
   const [activeSlot, setActiveSlot] = useState(null);
   const [hoveredLab, setHoveredLab] = useState(null);
@@ -165,7 +167,13 @@ const TimetableGrid = ({
   });
 
   // Click-to-Select & Click-to-Swap Mode state
-  const [swapSourceSlot, setSwapSourceSlot] = useState(null);
+  const [internalSwapSourceSlot, setInternalSwapSourceSlot] = useState(null);
+  const swapSourceSlot = externalSwapSourceSlot !== undefined ? externalSwapSourceSlot : internalSwapSourceSlot;
+  const setSwapSourceSlot = useCallback((slot) => {
+    if (onSwapSourceChange) onSwapSourceChange(slot);
+    setInternalSwapSourceSlot(slot);
+  }, [onSwapSourceChange]);
+
   const [isSwapMode, setIsSwapMode] = useState(false);
 
   // Undo / Redo history state & action tracker
@@ -907,20 +915,23 @@ const TimetableGrid = ({
 
           {/* Active Click-to-Swap Banner */}
           {swapSourceSlot && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-xs text-xs text-amber-800 dark:text-amber-200 animate-fadeIn">
+            <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-xs text-xs text-amber-800 dark:text-amber-200 animate-fadeIn flex-wrap">
               <span className="font-semibold uppercase tracking-wider text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded">
                 Source
               </span>
               <span className="font-medium">
                 {swapSourceSlot.day} P{swapSourceSlot.period} ({swapSourceSlot.subjectName || swapSourceSlot.subjectCode})
               </span>
-              <span className="text-[11px] opacity-80">➔ Click destination slot to swap</span>
+              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                ➔ Click any green cell to swap, or orange cell for auto-adjust
+              </span>
               <button
                 onClick={() => setSwapSourceSlot(null)}
-                className="ml-1 p-0.5 hover:bg-amber-500/20 rounded cursor-pointer text-amber-800 dark:text-amber-200"
+                className="ml-2 px-1.5 py-0.5 text-[11px] bg-[var(--bg-surface)] hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 rounded border border-amber-300 dark:border-amber-700 cursor-pointer flex items-center gap-1 font-medium"
                 title="Cancel selection (Esc)"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3 h-3" />
+                <span>Cancel (Esc)</span>
               </button>
             </div>
           )}
@@ -1052,7 +1063,7 @@ const TimetableGrid = ({
                       const isSelectedAsSwapSource = Boolean(
                         swapSourceSlot &&
                         swapSourceSlot.day === day &&
-                        swapSourceSlot.period === period
+                        Number(swapSourceSlot.period) === Number(period)
                       );
                       const isSameLabAsActive = Boolean(
                         activeLabGroup &&
@@ -1061,6 +1072,40 @@ const TimetableGrid = ({
                         activeLabGroup.periods.includes(period)
                       );
 
+                      // Click-to-Swap Compatibility & Conflict Status Calculation
+                      let isSwapCompatible = false;
+                      let isSwapConflict = false;
+                      let isSwapIncompatible = false;
+                      let swapReason = '';
+
+                      if (swapSourceSlot) {
+                        if (isSelectedAsSwapSource) {
+                          swapReason = 'Selected source period (click another period to swap, or Esc to cancel)';
+                        } else if (slot.isBreak) {
+                          isSwapIncompatible = true;
+                          swapReason = 'Cannot swap break periods';
+                        } else if (slot.isLocked) {
+                          isSwapIncompatible = true;
+                          swapReason = 'Slot is locked — unlock first to swap';
+                        } else {
+                          const gSrc = getLabBlock(currentSlots, swapSourceSlot.day, swapSourceSlot.period);
+                          const gDst = getLabBlock(currentSlots, day, period);
+                          if (gSrc && gDst && gSrc.day === gDst.day && gSrc.startPeriod === gDst.startPeriod) {
+                            isSwapIncompatible = true;
+                            swapReason = 'Belongs to the same laboratory session';
+                          } else {
+                            const conflict = checkComprehensiveConflict(swapSourceSlot, slot);
+                            if (conflict) {
+                              isSwapConflict = true;
+                              swapReason = conflict.message || 'Scheduling conflict (Click for auto-adjust)';
+                            } else {
+                              isSwapCompatible = true;
+                              swapReason = 'Compatible swap target — click to swap';
+                            }
+                          }
+                        }
+                      }
+
                       return (
                         <DraggableSlotCell
                           key={`${day}-${period}`}
@@ -1068,6 +1113,10 @@ const TimetableGrid = ({
                           onClick={() => handleCellClick(slot)}
                           isSelected={isSelected(slot)}
                           isSwapSource={isSelectedAsSwapSource}
+                          isSwapCompatible={isSwapCompatible}
+                          isSwapConflict={isSwapConflict}
+                          isSwapIncompatible={isSwapIncompatible}
+                          swapReason={swapReason}
                           isDiagnosticFocus={Boolean(diagnosticHighlight && diagnosticHighlight.day === day && Number(diagnosticHighlight.period) === Number(period))}
                           showActions={showActions && !readonly}
                           readonly={readonly}
