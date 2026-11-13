@@ -704,7 +704,9 @@ const TimetableBuilder = () => {
                       {/* Hard Conflicts Badge Button */}
                       <button
                         onClick={() => {
-                          setInlineIssuesCategory(inlineIssuesCategory === 'HARD_CONFLICTS' ? null : 'HARD_CONFLICTS');
+                          setDiagnosticsTab('HARD_CONFLICTS');
+                          setDiagnosticsModalOpen(true);
+                          setInlineIssuesCategory('HARD_CONFLICTS');
                         }}
                         className={`inline-flex flex-col items-start px-3.5 py-2 rounded-md border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
                           diagnostics.summary.hardConflictsCount === 0
@@ -743,7 +745,9 @@ const TimetableBuilder = () => {
                       {/* Soft Warnings Badge Button */}
                       <button
                         onClick={() => {
-                          setInlineIssuesCategory(inlineIssuesCategory === 'SOFT_WARNINGS' ? null : 'SOFT_WARNINGS');
+                          setDiagnosticsTab('SOFT_WARNINGS');
+                          setDiagnosticsModalOpen(true);
+                          setInlineIssuesCategory('SOFT_WARNINGS');
                         }}
                         className={`inline-flex flex-col items-start px-3.5 py-2 rounded-md border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
                           inlineIssuesCategory === 'SOFT_WARNINGS'
@@ -771,7 +775,9 @@ const TimetableBuilder = () => {
                       {/* Optimization Opportunities Badge Button */}
                       <button
                         onClick={() => {
-                          setInlineIssuesCategory(inlineIssuesCategory === 'OPTIMIZATION' ? null : 'OPTIMIZATION');
+                          setDiagnosticsTab('OPTIMIZATION');
+                          setDiagnosticsModalOpen(true);
+                          setInlineIssuesCategory('OPTIMIZATION');
                         }}
                         className={`inline-flex flex-col items-start px-3.5 py-2 rounded-md border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
                           inlineIssuesCategory === 'OPTIMIZATION'

@@ -1,3 +1,14 @@
+
+function arePeriodsConsecutiveWithoutRest(p1, p2, day) {
+  if (p2 !== p1 + 1) return false;
+  if (day === 'Friday') {
+    if (p1 === 4 && p2 === 5) return false;
+  } else {
+    if (p1 === 3 && p2 === 4) return false;
+  }
+  return true;
+}
+
 const { loadData } = require('./dataLoader');
 const { validateOutput } = require('./constraintValidator');
 const { validateGlobalTimetable } = require('./globalTimetableValidator');
@@ -311,7 +322,7 @@ async function generateTimetableDiagnostics(timetable, customData = null) {
     }
   }
 
-  // G. Global Faculty Rest-Gap Violations (Hard Constraint: Max 2 consecutive teaching periods globally)
+  // G. Global Faculty Rest-Gap Violations (Hard Constraint: Max 2 consecutive teaching periods globally, Lunch separates sessions)
   for (const t of data.teachers || []) {
     const tid = t._id.toString();
     for (const day of DAYS) {
@@ -332,7 +343,9 @@ async function generateTimetableDiagnostics(timetable, customData = null) {
       occupiedPeriods.sort((a, b) => a - b);
       let run = [];
       for (const p of occupiedPeriods) {
-        if (run.length === 0 || p === run[run.length - 1] + 1) {
+        const lastP = run[run.length - 1];
+        const isConsecutive = run.length === 0 || arePeriodsConsecutiveWithoutRest(lastP, p, day);
+        if (isConsecutive) {
           run.push(p);
         } else {
           if (run.length > 2) {
