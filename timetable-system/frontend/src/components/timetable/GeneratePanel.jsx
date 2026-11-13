@@ -19,13 +19,24 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
 
   const [progressStep, setProgressStep] = useState(0);
 
+  const PIPELINE_STAGES = [
+    { id: 1, label: '1. Validating academic requirements' },
+    { id: 2, label: '2. Generating initial timetable' },
+    { id: 3, label: '3. Analysing constraints & faculty rest gaps' },
+    { id: 4, label: '4. Detecting scheduling & lab conflicts' },
+    { id: 5, label: '5. Automatically resolving conflicts' },
+    { id: 6, label: '6. Optimizing rest & compact schedule' },
+    { id: 7, label: '7. Performing independent validation pass' },
+    { id: 8, label: '8. Preparing final verified timetable' },
+  ];
+
   useEffect(() => {
     let timer;
     if (generating) {
       setProgressStep(1);
       timer = setInterval(() => {
-        setProgressStep((prev) => (prev < 5 ? prev + 1 : prev));
-      }, 1200);
+        setProgressStep((prev) => (prev < 8 ? prev + 1 : prev));
+      }, 700);
     } else {
       setProgressStep(0);
     }
@@ -147,27 +158,19 @@ const GeneratePanel = ({ onGenerate, generating, lastResult }) => {
             />
           </div>
 
-          <div className="space-y-1 text-xs font-sans">
-            <div className="flex items-center gap-2 text-[var(--text-primary)]">
-              {progressStep >= 1 ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <span className="w-3.5 h-3.5 text-muted">○</span>}
-              <span>Departments configured</span>
-            </div>
-            <div className="flex items-center gap-2 text-[var(--text-primary)]">
-              {progressStep >= 2 ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <span className="w-3.5 h-3.5 text-muted">○</span>}
-              <span>Teacher availability mapped</span>
-            </div>
-            <div className="flex items-center gap-2 text-[var(--text-primary)]">
-              {progressStep >= 3 ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <span className="w-3.5 h-3.5 text-muted">○</span>}
-              <span>Room bookings planned</span>
-            </div>
-            <div className="flex items-center gap-2 text-[var(--text-primary)]">
-              {progressStep >= 4 ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <span className="w-3.5 h-3.5 text-accent animate-pulse">◐</span>}
-              <span>Placing subjects... (100% placement)</span>
-            </div>
-            <div className="flex items-center gap-2 text-[var(--text-primary)]">
-              {progressStep >= 5 ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <span className="w-3.5 h-3.5 text-muted">○</span>}
-              <span>Post-generation 5-check validation</span>
-            </div>
+          <div className="space-y-1.5 text-xs font-sans">
+            {PIPELINE_STAGES.map((st) => (
+              <div key={st.id} className="flex items-center gap-2 text-[var(--text-primary)]">
+                {progressStep > st.id ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                ) : progressStep === st.id ? (
+                  <span className="w-3.5 h-3.5 text-accent animate-pulse font-mono font-bold shrink-0">◐</span>
+                ) : (
+                  <span className="w-3.5 h-3.5 text-muted shrink-0">○</span>
+                )}
+                <span className={progressStep === st.id ? 'font-semibold text-accent' : ''}>{st.label}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
