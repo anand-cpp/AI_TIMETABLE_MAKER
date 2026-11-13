@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const labDetailsSchema = new mongoose.Schema(
   {
     roomName: { type: String, trim: true, default: '' },
+    allowedLabs: [{ type: String, default: 'Lab 4' }],
     duration: { type: Number, enum: [2, 3, 4, 6, 12], default: 2 },
     isBatchSplit: { type: Boolean, default: false },
     batch1Teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', default: null },
@@ -66,6 +67,7 @@ const subjectSchema = new mongoose.Schema(
     electiveDetails: { type: electiveDetailsSchema, default: null },
     isElective: { type: Boolean, default: false },
     labRoom: { type: String, trim: true, default: '' },
+    allowedLabs: [{ type: String, default: 'Lab 4' }],
     // Feature A: Consecutive periods requirement for theory subjects
     requiresConsecutivePeriods: { type: Boolean, default: false },
     consecutivePeriodsCount: { type: Number, min: 1, default: 1 },
