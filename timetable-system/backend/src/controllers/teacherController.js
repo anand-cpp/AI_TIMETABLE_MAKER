@@ -1,8 +1,11 @@
+const mongoose = require('mongoose');
 const Teacher = require('../models/Teacher');
 const Subject = require('../models/Subject');
 const Class = require('../models/Class');
 const ElectiveGroup = require('../models/ElectiveGroup');
 const Department = require('../models/Department');
+const Timetable = require('../models/Timetable');
+const Substitution = require('../models/Substitution');
 const { sendSuccess, sendError } = require('../utils/responseHelpers');
 const { generateUniqueUsername, generateDefaultPassword } = require('../utils/generateCredentials');
 const { validateUnavailability } = require('../utils/validators');
@@ -238,13 +241,17 @@ const getMyProfile = async (req, res) => {
 // GET /api/teachers/:id/profile
 const getFacultyProfile = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return sendError(res, 404, 'Teacher profile not found');
+    }
+
     const teacher = await Teacher.findById(req.params.id)
       .select('-password')
       .populate('departmentId', 'name code');
 
-    if (!teacher) return sendError(res, 404, 'Teacher not found');
+    if (!teacher) return sendError(res, 404, 'Teacher profile not found');
 
-    // Get all subjects where this teacher is assigned
+    // Get all subjects where this teacher is assigned (direct, co-instructor, batch1, batch2)
     const subjects = await Subject.find({
       $or: [
         { teachers: req.params.id },
@@ -253,114 +260,290 @@ const getFacultyProfile = async (req, res) => {
         { 'labDetails.batch2Teacher': req.params.id },
       ],
     })
-      .populate('classId', 'semester section departmentId')
+      .populate({
+        path: 'classId',
+        select: 'name semester section departmentId',
+        populate: { path: 'departmentId', select: 'name code' }
+      })
       .populate('teachers', 'name username')
       .populate('coInstructors', 'name username')
       .populate('labDetails.batch1Teacher', 'name username')
       .populate('labDetails.batch2Teacher', 'name username')
       .populate('electiveDetails.electiveGroupId', 'name')
-      .populate('electiveDetails.participatingClasses', 'semester section departmentId')
+      .populate({
+        path: 'electiveDetails.participatingClasses',
+        select: 'name semester section departmentId',
+        populate: { path: 'departmentId', select: 'name code' }
+      })
       .lean();
 
-    // Organize allocations
+    // Also check ElectiveGroups where teacher is assigned in options
+    const electiveGroups = await ElectiveGroup.find({
+      'options.teacherIds': req.params.id
+    }).populate({
+      path: 'options.subjectId',
+      populate: {
+        path: 'classId',
+        select: 'name semester section departmentId',
+        populate: { path: 'departmentId', select: 'name code' }
+      }
+    }).lean();
+
+    const existingSubjectIds = new Set(subjects.map(s => s._id.toString()));
+    for (const eg of electiveGroups) {
+      for (const opt of eg.options || []) {
+        if (opt.subjectId && opt.teacherIds?.some(tid => tid.toString() === req.params.id)) {
+          const sId = (opt.subjectId._id || opt.subjectId).toString();
+          if (!existingSubjectIds.has(sId)) {
+            existingSubjectIds.add(sId);
+            const subDoc = opt.subjectId;
+            subDoc.electiveDetails = subDoc.electiveDetails || {};
+            subDoc.electiveDetails.electiveGroupId = { _id: eg._id, name: eg.name };
+            subjects.push(subDoc);
+          }
+        }
+      }
+    }
+
+    // Organize allocations and calculate exact workload
     const allocations = [];
     const semesterMap = {};
-    let totalHours = 0;
+    let totalWeeklyHours = 0;
     let theoryHours = 0;
+    let tutorialHours = 0;
     let labHours = 0;
+    let electiveHours = 0;
     let projectHours = 0;
     let placementHours = 0;
-    let electiveHours = 0;
+
+    const uniqueSubjectCodes = new Set();
+    const uniqueSections = new Set();
 
     for (const subject of subjects) {
       const cls = subject.classId;
       if (!cls) continue;
 
-      const dept = cls.departmentId || { code: 'N/A', name: 'Unknown' };
-      const isMainTeacher = subject.teachers?.some(t => t._id?.toString() === req.params.id || t.toString() === req.params.id) || false;
-      const isCoInstructor = subject.coInstructors?.some(t => t._id?.toString() === req.params.id || t.toString() === req.params.id) || false;
-      const isBatch1 = subject.labDetails?.batch1Teacher?._id?.toString() === req.params.id || subject.labDetails?.batch1Teacher?.toString() === req.params.id;
-      const isBatch2 = subject.labDetails?.batch2Teacher?._id?.toString() === req.params.id || subject.labDetails?.batch2Teacher?.toString() === req.params.id;
+      const dept = cls.departmentId || { code: 'CSE', name: 'Computer Science and Engineering' };
+      const isMainTeacher = subject.teachers?.some(t => (t._id || t).toString() === req.params.id) || false;
+      const isCoInstructor = subject.coInstructors?.some(t => (t._id || t).toString() === req.params.id) || false;
+      const isBatch1 = (subject.labDetails?.batch1Teacher?._id || subject.labDetails?.batch1Teacher)?.toString() === req.params.id;
+      const isBatch2 = (subject.labDetails?.batch2Teacher?._id || subject.labDetails?.batch2Teacher)?.toString() === req.params.id;
 
-      // Determine hours for this teacher
-      let hours = 0;
-      let type = subject.type;
+      let facultyRole = 'Assigned Faculty';
+      if (isMainTeacher && isBatch1) facultyRole = 'Main Faculty (Batch 1)';
+      else if (isMainTeacher) facultyRole = 'Main Faculty';
+      else if (isCoInstructor && isBatch2) facultyRole = 'Co-Instructor (Batch 2)';
+      else if (isCoInstructor) facultyRole = 'Co-Instructor';
+      else if (isBatch1) facultyRole = 'Batch 1 Faculty';
+      else if (isBatch2) facultyRole = 'Batch 2 Faculty';
+
+      // Mathematical breakdown according to authoritative category
+      let th = 0;
+      let tut = 0;
+      let lab = 0;
+      let el = 0;
+      let total = 0;
 
       if (subject.type === 'lab') {
-        if (subject.labDetails?.isBatchSplit) {
-          // For batch-split labs, each teacher gets the full lab duration
-          hours = subject.labDetails?.duration || 2;
-        } else {
-          hours = subject.labDetails?.duration || 2;
-        }
+        th = 0;
+        tut = 0;
+        lab = subject.P || subject.labDetails?.duration || subject.weeklyHours || 0;
+        total = lab;
+        labHours += lab;
+      } else if (subject.type === 'elective' || subject.isElective) {
+        // Dedicated elective classification: elective hours are partitioned into electiveHours
+        // without duplicating them as separate theory or tutorial lecture hours
+        th = 0;
+        tut = 0;
+        lab = 0;
+        el = subject.weeklyHours || ((subject.L || 0) + (subject.T || 0) + (subject.P || 0)) || 4;
+        total = el;
+        electiveHours += el;
       } else {
-        // Theory and elective subjects
-        hours = subject.weeklyHours || 0;
+        // Core theory subjects
+        th = subject.L !== undefined ? subject.L : (subject.weeklyHours || 0);
+        tut = subject.T || 0;
+        lab = subject.P || 0;
+        total = th + tut + lab;
+        theoryHours += th;
+        tutorialHours += tut;
+        labHours += lab;
       }
+
+      totalWeeklyHours += total;
+
+      const className = cls.name || `S${cls.semester} ${dept.code || 'CSE'} ${cls.section}`;
+      const sectionIdentifier = `${dept.code || 'CSE'} S${cls.semester}${cls.section}`;
+      uniqueSubjectCodes.add(subject.code);
+      uniqueSections.add(sectionIdentifier);
 
       const semKey = `S${cls.semester}`;
       if (!semesterMap[semKey]) {
-        semesterMap[semKey] = { semester: cls.semester, subjects: [], totalHours: 0 };
+        semesterMap[semKey] = {
+          semester: cls.semester,
+          subjects: [],
+          theoryHours: 0,
+          tutorialHours: 0,
+          labHours: 0,
+          electiveHours: 0,
+          totalHours: 0,
+          sections: new Set(),
+          subjectCodes: new Set(),
+        };
       }
 
       const allocation = {
         courseCode: subject.code,
+        subjectCode: subject.code,
         subjectName: subject.name,
         semester: cls.semester,
-        branch: dept.code,
+        branch: dept.code || 'CSE',
         section: cls.section,
-        type: type,
-        hours,
+        className,
+        type: subject.type,
+        facultyRole,
+        theoryHours: th,
+        tutorialHours: tut,
+        labHours: lab,
+        electiveHours: el,
+        totalHours: total,
+        hours: total,
+        L: subject.L || 0,
+        T: subject.T || 0,
+        P: subject.P || 0,
+        R: subject.R || 0,
+        labRoom: subject.labRoom || subject.labDetails?.roomName || '',
+        requiresConsecutivePeriods: subject.requiresConsecutivePeriods || false,
+        consecutivePeriodsCount: subject.consecutivePeriodsCount || 1,
+        fixedSlots: subject.fixedSlots || [],
         isMainTeacher,
         isCoInstructor,
         isBatchSplit: subject.labDetails?.isBatchSplit || false,
-        batch: isBatch1 ? 'Batch 1' : isBatch2 ? 'Batch 2' : '',
+        batch: isBatch1 ? 'Batch 1' : isBatch2 ? 'Batch 2' : (subject.labDetails?.isBatchSplit ? 'Batch Split' : ''),
+        isElective: subject.type === 'elective' || subject.isElective,
         electiveGroup: subject.electiveDetails?.electiveGroupId?.name || '',
         subjectId: subject._id,
       };
 
       allocations.push(allocation);
       semesterMap[semKey].subjects.push(allocation);
-      semesterMap[semKey].totalHours += hours;
+      semesterMap[semKey].theoryHours += th;
+      semesterMap[semKey].tutorialHours += tut;
+      semesterMap[semKey].labHours += lab;
+      semesterMap[semKey].electiveHours += el;
+      semesterMap[semKey].totalHours += total;
+      semesterMap[semKey].sections.add(sectionIdentifier);
+      semesterMap[semKey].subjectCodes.add(subject.code);
 
-      totalHours += hours;
-
-      // Categorize hours
-      if (subject.type === 'theory') {
-        theoryHours += hours;
-      } else if (subject.type === 'lab') {
-        labHours += hours;
-      } else if (subject.type === 'elective') {
-        electiveHours += hours;
-      }
-
-      // Check for project/placement based on subject code/name
       const nameLower = subject.name.toLowerCase();
       const codeLower = subject.code.toLowerCase();
       if (nameLower.includes('project') || codeLower.includes('project') || nameLower.includes('phase')) {
-        projectHours += hours;
+        projectHours += total;
       }
       if (nameLower.includes('placement') || codeLower.includes('placement') || nameLower.includes('training')) {
-        placementHours += hours;
+        placementHours += total;
       }
     }
 
-    // Sort allocations by semester, then branch, section, subject
+    // Sort allocations by semester, then section, then subject name
     allocations.sort((a, b) => {
       if (a.semester !== b.semester) return a.semester - b.semester;
-      if (a.branch !== b.branch) return a.branch.localeCompare(b.branch);
       if (a.section !== b.section) return a.section.localeCompare(b.section);
       return a.subjectName.localeCompare(b.subjectName);
     });
 
-    // Sort semester map
     const sortedSemesters = Object.keys(semesterMap)
       .sort((a, b) => semesterMap[a].semester - semesterMap[b].semester)
       .map(key => ({
         semester: semesterMap[key].semester,
+        theoryHours: semesterMap[key].theoryHours,
+        tutorialHours: semesterMap[key].tutorialHours,
+        labHours: semesterMap[key].labHours,
+        electiveHours: semesterMap[key].electiveHours,
+        totalWeeklyHours: semesterMap[key].totalHours,
+        assignedSubjectsCount: semesterMap[key].subjectCodes.size,
+        sectionsHandledCount: semesterMap[key].sections.size,
         subjects: semesterMap[key].subjects,
-        totalHours: semesterMap[key].totalHours,
       }));
+
+    // Dedicated Laboratory Breakdown
+    const labAllocations = allocations
+      .filter(a => a.type === 'lab' || a.labHours > 0)
+      .map(a => ({
+        subjectName: a.subjectName,
+        subjectCode: a.courseCode || a.subjectCode,
+        semester: a.semester,
+        section: a.section,
+        className: a.className,
+        facultyAllocation: a.facultyRole,
+        weeklyLabHours: a.labHours,
+        labRoom: a.labRoom || '—',
+        batch: a.batch || (a.isBatchSplit ? 'Batch Split' : 'All Batches'),
+      }));
+
+    // Real substitutions count
+    const substitutionCount = await Substitution.countDocuments({
+      $or: [
+        { originalTeacherId: req.params.id },
+        { substituteTeacherId: req.params.id },
+      ],
+    });
+
+    // Scheduled timetable workload from active published timetable
+    const activeTimetable = await Timetable.findOne({ isAccepted: true }).sort({ version: -1 }).lean();
+    let scheduledWorkload = {
+      totalWeeklyHours: 0,
+      theoryHours: 0,
+      labHours: 0,
+      electiveHours: 0,
+      distinctSlotsCount: 0,
+      scheduledSlots: [],
+    };
+
+    if (activeTimetable) {
+      let schedTheory = 0;
+      let schedLab = 0;
+      let schedElective = 0;
+      const distinctSlots = new Set();
+      const scheduledSlots = [];
+
+      for (const ct of activeTimetable.classTimetables || []) {
+        for (const slot of ct.slots || []) {
+          if (slot.isBreak) continue;
+          const isTeacherInSlot = (slot.teacherIds || []).some(tid => tid?.toString() === req.params.id) ||
+                                  (slot.teacherNames || []).includes(teacher.name) ||
+                                  (slot.batch1?.teacherId?.toString() === req.params.id) ||
+                                  (slot.batch2?.teacherId?.toString() === req.params.id);
+          if (isTeacherInSlot) {
+            const slotKey = `${slot.day}-${slot.period}`;
+            scheduledSlots.push({
+              day: slot.day,
+              period: slot.period,
+              className: ct.className,
+              subjectCode: slot.subjectCode,
+              subjectName: slot.subjectName,
+              type: slot.subjectType || (slot.isLabBlock ? 'lab' : slot.isElective ? 'elective' : 'theory'),
+              room: slot.roomName,
+            });
+            if (!distinctSlots.has(slotKey)) {
+              distinctSlots.add(slotKey);
+              if (slot.isLabBlock || slot.subjectType === 'lab') schedLab++;
+              else if (slot.isElective || slot.subjectType === 'elective') schedElective++;
+              else schedTheory++;
+            }
+          }
+        }
+      }
+
+      scheduledWorkload = {
+        totalWeeklyHours: distinctSlots.size,
+        theoryHours: schedTheory,
+        labHours: schedLab,
+        electiveHours: schedElective,
+        distinctSlotsCount: distinctSlots.size,
+        scheduledSlots,
+      };
+    }
 
     const profile = {
       teacher: {
@@ -371,20 +554,41 @@ const getFacultyProfile = async (req, res) => {
         phone: teacher.phone,
         designation: teacher.designation,
         department: teacher.departmentId,
+        maxPeriodsPerDay: teacher.maxPeriodsPerDay,
+        maxPeriodsPerWeek: teacher.maxPeriodsPerWeek,
       },
       summary: {
-        totalWeeklyHours: totalHours,
+        totalWeeklyHours,
         theoryHours,
+        tutorialHours,
         labHours,
+        practicalHours: labHours,
+        electiveHours,
         projectHours,
         placementHours,
-        electiveHours,
-        totalSubjects: allocations.length,
-        totalSemesters: Object.keys(semesterMap).length,
-        totalSections: [...new Set(allocations.map(a => `${a.branch} S${a.semester}${a.section}`))].length,
+        totalSubjects: uniqueSubjectCodes.size,
+        assignedSubjectsCount: uniqueSubjectCodes.size,
+        subjectsAssigned: uniqueSubjectCodes.size,
+        totalSections: uniqueSections.size,
+        sectionsHandledCount: uniqueSections.size,
+        sectionsHandled: uniqueSections.size,
+        substitutions: substitutionCount,
+        totalSemesters: sortedSemesters.length,
       },
+      assignedWorkload: {
+        totalWeeklyHours,
+        theoryHours,
+        tutorialHours,
+        labHours,
+        practicalHours: labHours,
+        electiveHours,
+        subjectsCount: uniqueSubjectCodes.size,
+        sectionsCount: uniqueSections.size,
+      },
+      scheduledWorkload,
       semesterBreakdown: sortedSemesters,
       allocations,
+      labAllocations,
     };
 
     return sendSuccess(res, 200, { profile });
@@ -539,19 +743,11 @@ const removeAllocation = async (req, res) => {
     const teacherId = req.params.id;
     const { allocId } = req.params;
 
-    // Find the subject where this teacher is assigned
-    // Search across teachers, coInstructors, and labDetails batch teachers
-    const subject = await Subject.findOne({
-      $or: [
-        { teachers: teacherId },
-        { coInstructors: teacherId },
-        { 'labDetails.batch1Teacher': teacherId },
-        { 'labDetails.batch2Teacher': teacherId },
-      ],
-    });
+    // Find the specific subject allocation by allocId
+    const subject = await Subject.findById(allocId);
 
     if (!subject) {
-      return sendError(res, 404, 'No subject allocation found for this teacher');
+      return sendError(res, 404, 'Subject allocation not found');
     }
 
     // Remove teacher from all relevant arrays
@@ -712,7 +908,113 @@ const editAllocation = async (req, res) => {
   }
 };
 
+
+// GET /api/teachers/workload-overview
+const getFacultyWorkloadOverview = async (req, res) => {
+  try {
+    const teachers = await Teacher.find().select('-password').populate('departmentId').sort({ name: 1 }).lean();
+    const Timetable = require('../models/Timetable');
+    const Subject = require('../models/Subject');
+    const timetable = await Timetable.findOne({ isAccepted: true }) || await Timetable.findOne().sort({ version: -1 });
+
+    const allSubjects = await Subject.find().populate('classId').lean();
+
+    // Calculate teacher scheduled hours from timetable
+    const scheduledHoursMap = {};
+    const classesTaughtMap = {};
+    if (timetable) {
+      for (const ct of timetable.classTimetables || []) {
+        for (const slot of ct.slots || []) {
+          if (slot.isBreak || slot.isEmpty) continue;
+          const tIds = (slot.teacherIds || []).map(id => id.toString());
+          const tNames = (slot.teacherNames || []).map(n => (n || '').trim().toLowerCase());
+          
+          for (const tid of tIds) {
+            if (!scheduledHoursMap[tid]) scheduledHoursMap[tid] = new Set();
+            scheduledHoursMap[tid].add(`${slot.day}_${slot.period}`);
+            if (!classesTaughtMap[tid]) classesTaughtMap[tid] = new Set();
+            classesTaughtMap[tid].add(ct.className);
+          }
+
+          // Also match teachers by name if teacherIds was not populated
+          for (const teacher of teachers) {
+            const tid = teacher._id.toString();
+            const tNameLower = (teacher.name || '').trim().toLowerCase();
+            if (tNames.some(tn => tn === tNameLower || tn.includes(tNameLower) || tNameLower.includes(tn))) {
+              if (!scheduledHoursMap[tid]) scheduledHoursMap[tid] = new Set();
+              scheduledHoursMap[tid].add(`${slot.day}_${slot.period}`);
+              if (!classesTaughtMap[tid]) classesTaughtMap[tid] = new Set();
+              classesTaughtMap[tid].add(ct.className);
+            }
+          }
+        }
+      }
+    }
+
+    const report = teachers.map(t => {
+      const tid = t._id.toString();
+      const teacherSubjects = allSubjects.filter(s =>
+        (s.teachers || []).some(id => (id._id || id).toString() === tid) ||
+        (s.coInstructors || []).some(id => (id._id || id).toString() === tid)
+      );
+
+      const uniqueCodes = new Set();
+      let totalAssignedHours = 0;
+      const assignedSubjects = [];
+
+      for (const s of teacherSubjects) {
+        const classLabel = s.classId ? (s.classId.name || `S${s.classId.semester} ${s.classId.section}`) : 'General';
+        assignedSubjects.push({
+          _id: s._id,
+          code: s.code,
+          name: s.name,
+          weeklyHours: s.weeklyHours || 0,
+          classLabel,
+        });
+
+        const assignmentKey = s._id ? s._id.toString() : (s.code + '__' + (s.classId?._id || s.classId || ''));
+        if (!uniqueCodes.has(assignmentKey)) {
+          uniqueCodes.add(assignmentKey);
+          totalAssignedHours += s.weeklyHours || 0;
+        }
+      }
+
+      const totalScheduledHours = scheduledHoursMap[tid] ? scheduledHoursMap[tid].size : 0;
+      const remainingWorkload = Math.max(0, totalAssignedHours - totalScheduledHours);
+      const classesTaught = classesTaughtMap[tid] ? Array.from(classesTaughtMap[tid]) : [];
+
+      let status = 'Balanced';
+      if (totalScheduledHours < totalAssignedHours) status = 'Underload';
+      else if (totalScheduledHours > (t.maxHoursPerWeek || 20)) status = 'Overload';
+
+      return {
+        _id: t._id,
+        name: t.name,
+        username: t.username,
+        email: t.email,
+        phone: t.phone,
+        department: t.departmentId?.name || t.department || 'Computer Science',
+        departmentCode: t.departmentId?.code || 'CSE',
+        maxHoursPerWeek: t.maxHoursPerWeek || 20,
+        maxHoursPerDay: t.maxHoursPerDay || 4,
+        assignedSubjects,
+        classesTaught,
+        totalAssignedHours,
+        totalScheduledHours,
+        remainingWorkload,
+        status,
+        isActive: t.isActive !== false,
+      };
+    });
+
+    return sendSuccess(res, 200, { faculty: report });
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
 module.exports = {
+  getFacultyWorkloadOverview,
   getTeachers,
   getTeacher,
   createTeacher,

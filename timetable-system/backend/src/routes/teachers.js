@@ -10,6 +10,7 @@ const {
   deleteTeacher,
   getMyProfile,
   getFacultyProfile,
+  getFacultyWorkloadOverview,
   addAllocation,
   removeAllocation,
   editAllocation,
@@ -22,6 +23,9 @@ const {
   requireOwnDataOrAdmin,
 } = require('../middleware/auth');
 
+// Faculty Workload Overview Report
+router.get('/workload-overview', authenticate, getFacultyWorkloadOverview);
+
 // Teacher own profile
 router.get('/me/profile', authenticate, requireTeacher, getMyProfile);
 
@@ -31,8 +35,20 @@ router.get('/:id/profile', authenticate, requireOwnDataOrAdmin, getFacultyProfil
 // Admin only - list all
 router.get('/', authenticate, requireAdmin, getTeachers);
 
+// Admin only - create teacher
+router.post('/', authenticate, requireAdmin, createTeacher);
+
 // Admin or own teacher
 router.get('/:id', authenticate, requireOwnDataOrAdmin, getTeacher);
+
+// Admin only - update teacher
+router.put('/:id', authenticate, requireAdmin, updateTeacher);
+
+// Teacher or Admin - update unavailability
+router.put('/:id/unavailability', authenticate, requireOwnDataOrAdmin, updateUnavailability);
+
+// Admin only - delete teacher
+router.delete('/:id', authenticate, requireAdmin, deleteTeacher);
 
 // ═══════════════════════════════════════════════════════════════
 // TEACHER SUBJECT ALLOCATIONS
@@ -64,8 +80,5 @@ router.put(
   requireOwnDataOrAdmin,
   editAllocation
 );
-
-// Admin only - list all
-router.get('/', authenticate, requireAdmin, getTeachers);
 
 module.exports = router;
