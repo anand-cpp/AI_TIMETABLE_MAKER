@@ -25,7 +25,9 @@ const TeacherForm = ({ onSubmit, onCancel, loading, initialData }) => {
       departmentId: '',
       email: '',
       phone: '',
+      designation: '',
       maxPeriodsPerDay: '',
+      maxPeriodsPerWeek: '',
     },
   });
 
@@ -50,7 +52,9 @@ const TeacherForm = ({ onSubmit, onCancel, loading, initialData }) => {
         departmentId: initialData.departmentId?._id || initialData.departmentId || '',
         email: initialData.email || '',
         phone: initialData.phone || '',
+        designation: initialData.designation || '',
         maxPeriodsPerDay: initialData.maxPeriodsPerDay || '',
+        maxPeriodsPerWeek: initialData.maxPeriodsPerWeek || '',
       });
       setUnavailability(initialData.unavailability || []);
       setMorningLabPreference(initialData.morningLabPreference || false);
@@ -63,6 +67,7 @@ const TeacherForm = ({ onSubmit, onCancel, loading, initialData }) => {
       unavailability,
       morningLabPreference,
       maxPeriodsPerDay: data.maxPeriodsPerDay ? Number(data.maxPeriodsPerDay) : null,
+      maxPeriodsPerWeek: data.maxPeriodsPerWeek ? Number(data.maxPeriodsPerWeek) : null,
     });
   };
 
@@ -90,13 +95,21 @@ const TeacherForm = ({ onSubmit, onCancel, loading, initialData }) => {
               minLength: { value: 2, message: 'Min 2 characters' },
             })}
           />
-          <Select
-            label="Department"
-            options={deptOptions}
-            placeholder="Select department (optional)"
-            error={errors.departmentId?.message}
-            {...register('departmentId')}
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Department"
+              options={deptOptions}
+              placeholder="Select department (optional)"
+              error={errors.departmentId?.message}
+              {...register('departmentId')}
+            />
+            <Input
+              label="Designation"
+              placeholder="e.g. Assistant Professor, HOD"
+              error={errors.designation?.message}
+              {...register('designation')}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Email"
@@ -117,17 +130,30 @@ const TeacherForm = ({ onSubmit, onCancel, loading, initialData }) => {
               {...register('phone')}
             />
           </div>
-          <Input
-            label="Max Periods Per Day"
-            type="number"
-            placeholder="Leave blank to use college default"
-            hint="Override college-wide daily limit for this teacher"
-            error={errors.maxPeriodsPerDay?.message}
-            {...register('maxPeriodsPerDay', {
-              min: { value: 1, message: 'Must be at least 1' },
-              max: { value: 12, message: 'Max 12 periods' },
-            })}
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Max Periods Per Day"
+              type="number"
+              placeholder="e.g. 4 (default)"
+              hint="Max daily limit"
+              error={errors.maxPeriodsPerDay?.message}
+              {...register('maxPeriodsPerDay', {
+                min: { value: 1, message: 'Must be at least 1' },
+                max: { value: 12, message: 'Max 12 periods' },
+              })}
+            />
+            <Input
+              label="Max Periods Per Week"
+              type="number"
+              placeholder="e.g. 20 (default)"
+              hint="Max weekly limit"
+              error={errors.maxPeriodsPerWeek?.message}
+              {...register('maxPeriodsPerWeek', {
+                min: { value: 1, message: 'Must be at least 1' },
+                max: { value: 40, message: 'Max 40 periods' },
+              })}
+            />
+          </div>
         </div>
       </div>
 

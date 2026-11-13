@@ -18,7 +18,8 @@ import {
   Phone,
   CheckCircle2,
   CalendarDays,
-  FileText
+  FileText,
+  Edit
 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import Card from '../../components/ui/Card';
@@ -29,6 +30,7 @@ import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import teacherService from '../../services/teacherService';
+import TeacherForm from '../../components/teachers/TeacherForm';
 import classService from '../../services/classService';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
@@ -56,6 +58,8 @@ const FacultyProfile = () => {
   const [error, setError] = useState(null);
   const [errorType, setErrorType] = useState(null); // 'not_found' | 'server_error'
   const [activeTab, setActiveTab] = useState('allocations');
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [editProfileLoading, setEditProfileLoading] = useState(false);
 
   // Add/Edit allocation modal state
   const [showAddAllocation, setShowAddAllocation] = useState(false);
@@ -502,6 +506,21 @@ const FacultyProfile = () => {
   };
 
   // ═══════════════════════════════════════════════════════════════
+
+  const handleUpdateProfile = async (formData) => {
+    try {
+      setEditProfileLoading(true);
+      await teacherService.update(id, formData);
+      toast.success('Teacher profile updated successfully');
+      setShowEditProfileModal(false);
+      await loadProfile();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update teacher profile');
+    } finally {
+      setEditProfileLoading(false);
+    }
+  };
+
   // ALLOCATION ACTIONS
   // ═══════════════════════════════════════════════════════════════
   const handleOpenEdit = (alloc) => {
@@ -697,6 +716,15 @@ const FacultyProfile = () => {
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowEditProfileModal(true)}
+              leftIcon={<Edit className="w-4 h-4" />}
+            >
+              Edit Profile
+            </Button>
+
             <Button
               variant="secondary"
               size="sm"

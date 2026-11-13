@@ -117,10 +117,13 @@ const updateTeacher = async (req, res) => {
       departmentId,
       email,
       phone,
+      designation,
       morningLabPreference,
       maxPeriodsPerDay,
+      maxPeriodsPerWeek,
       isActive,
       password,
+      unavailability,
     } = req.body;
 
     const teacher = await Teacher.findById(req.params.id);
@@ -131,9 +134,14 @@ const updateTeacher = async (req, res) => {
     if (departmentId !== undefined) updateData.departmentId = departmentId || null;
     if (email !== undefined) updateData.email = email.trim().toLowerCase();
     if (phone !== undefined) updateData.phone = phone.trim();
+    if (designation !== undefined) updateData.designation = designation.trim();
     if (morningLabPreference !== undefined) updateData.morningLabPreference = morningLabPreference;
     if (maxPeriodsPerDay !== undefined) updateData.maxPeriodsPerDay = maxPeriodsPerDay ? Number(maxPeriodsPerDay) : null;
+    if (maxPeriodsPerWeek !== undefined) updateData.maxPeriodsPerWeek = maxPeriodsPerWeek ? Number(maxPeriodsPerWeek) : null;
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (Array.isArray(unavailability)) updateData.unavailability = unavailability;
+
+    const oldName = teacher.name;
 
     // Password update - will be re-hashed by pre-save hook
     if (password && password.trim()) {
@@ -143,6 +151,20 @@ const updateTeacher = async (req, res) => {
       teacher.password = password.trim();
       Object.assign(teacher, updateData);
       await teacher.save();
+
+      if (updateData.name && updateData.name !== oldName) {
+        const Timetable = require('../models/Timetable');
+        await Timetable.updateMany(
+          { 'classTimetables.slots.teacherIds': teacher._id },
+          { $set: { 'classTimetables.$[].slots.$[slot].teacherNames.$[tName]': updateData.name } },
+          {
+            arrayFilters: [
+              { 'slot.teacherIds': teacher._id },
+              { 'tName': oldName }
+            ]
+          }
+        ).catch(() => {});
+      }
 
       const populated = await Teacher.findById(teacher._id)
         .select('-password')
@@ -159,6 +181,20 @@ const updateTeacher = async (req, res) => {
     )
       .select('-password')
       .populate('departmentId', 'name code');
+
+    if (updateData.name && updateData.name !== oldName) {
+      const Timetable = require('../models/Timetable');
+      await Timetable.updateMany(
+        { 'classTimetables.slots.teacherIds': teacher._id },
+        { $set: { 'classTimetables.$[].slots.$[slot].teacherNames.$[tName]': updateData.name } },
+        {
+          arrayFilters: [
+            { 'slot.teacherIds': teacher._id },
+            { 'tName': oldName }
+          ]
+        }
+      ).catch(() => {});
+    }
 
     return sendSuccess(res, 200, { teacher: updated }, 'Teacher updated successfully');
   } catch (error) {

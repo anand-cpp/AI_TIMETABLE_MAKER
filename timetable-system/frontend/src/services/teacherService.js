@@ -51,6 +51,16 @@ const teacherService = {
     return res.data;
   },
 
+  create: async (teacherData) => {
+    const res = await api.post('/teachers', teacherData);
+    return res.data;
+  },
+
+  update: async (id, teacherData) => {
+    const res = await api.put(`/teachers/${id}`, teacherData);
+    return res.data;
+  },
+
   delete: async (id) => {
     const res = await api.delete(`/teachers/${id}`);
     return res.data;
