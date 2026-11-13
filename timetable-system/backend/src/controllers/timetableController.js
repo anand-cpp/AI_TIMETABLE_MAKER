@@ -27,6 +27,9 @@ const { scoreGrid } = require('../services/engine/qualityScorer');
 const EDIT_BLOCKING_TYPES = new Set([
   'TEACHER_DOUBLE_BOOKED',
   'LAB_ROOM_CONFLICT',
+  'LAB_DOUBLE_BOOKING',
+  'INVALID_LAB_ASSIGNMENT',
+  'FACULTY_REST_GAP',
   'TEACHER_UNAVAILABLE',
   'INVALID_SLOT_NO_TEACHER',
   'LAB_BLOCK_SPLIT',
@@ -44,8 +47,8 @@ const EDIT_BLOCKING_TYPES = new Set([
 ]);
 
 // Validate the (already mutated) in-memory timetable.
-// For manual swaps (isManualSwap = true), structural violations strictly block (e.g. split lab, lunch crossed),
-// but teacher cross-booking warnings do not abort the manual edit so admins can swap lab groups freely.
+// For manual swaps (isManualSwap = true), structural violations, faculty rest gaps,
+// and laboratory conflicts strictly block.
 const checkEdit = async (timetable, isManualSwap = false) => {
   const validation = await validatePersistedTimetable(timetable);
   const blockingTypes = isManualSwap
@@ -58,6 +61,10 @@ const checkEdit = async (timetable, isManualSwap = false) => {
         'FRIDAY_P3_LAB_PROHIBITED',
         'DAILY_SUBJECT_UNIQUENESS_VIOLATION',
         'ELECTIVE_DESYNCHRONIZATION',
+        'FACULTY_REST_GAP',
+        'LAB_DOUBLE_BOOKING',
+        'LAB_ROOM_CONFLICT',
+        'INVALID_LAB_ASSIGNMENT',
       ])
     : EDIT_BLOCKING_TYPES;
 
@@ -83,7 +90,27 @@ const getVersions = async (req, res) => {
       .select('version label isAccepted generatedAt acceptedAt qualityScore warnings unplacedSubjects generationStats')
       .sort({ version: -1 });
 
-    return sendSuccess(res, 200, { versions });
+    const sanitizedVersions = versions.map(v => {
+      const vObj = v.toObject ? v.toObject() : v;
+      const hardCount = vObj.generationStats?.hardViolations || 0;
+      const softCount = vObj.generationStats?.softViolations || (vObj.warnings?.length || 0);
+      const unplacedCount = (vObj.unplacedSubjects?.length || 0);
+
+      // Never give 100/100 if there are warnings, unplaced slots, or hard conflicts
+      let score = vObj.qualityScore?.overall;
+      if (score === undefined || score === null || (hardCount > 0 && score > 48) || (score === 100 && softCount > 0) || (score >= 90 && softCount >= 15)) {
+        let calcScore = 100 - (hardCount * 8) - (softCount * 0.6) - (unplacedCount * 10);
+        calcScore = Math.max(15, Math.min(100, Math.round(calcScore)));
+        if (hardCount > 0) {
+          calcScore = Math.min(calcScore, Math.max(15, 48 - (hardCount - 1) * 4));
+        }
+        score = calcScore;
+        vObj.qualityScore = { ...(vObj.qualityScore || {}), overall: score };
+      }
+      return vObj;
+    });
+
+    return sendSuccess(res, 200, { versions: sanitizedVersions });
   } catch (error) {
     return sendError(res, 500, error.message);
   }

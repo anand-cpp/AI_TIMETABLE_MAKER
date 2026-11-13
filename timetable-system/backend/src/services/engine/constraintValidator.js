@@ -9,6 +9,9 @@ const HARD_VIOLATION_TYPES = [
   'TEACHER_DOUBLE_BOOKED',
   'CLASS_DOUBLE_BOOKED',
   'LAB_ROOM_CONFLICT',
+  'LAB_DOUBLE_BOOKING',
+  'INVALID_LAB_ASSIGNMENT',
+  'FACULTY_REST_GAP',
   'TEACHER_UNAVAILABLE',
   'SUBJECT_UNDER_SCHEDULED',
   'SUBJECT_OVER_SCHEDULED',
@@ -49,13 +52,13 @@ const slotTeacherIds = (slot) => {
 
 const slotRoomNames = (slot) => {
   const rooms = [];
-  if (!slot) return rooms;
-  if (slot.roomName && (slot.subjectType === 'lab' || slot.isBatchSplit)) {
-    rooms.push(slot.roomName);
+  if (!slot || slot.isEmpty || slot.isBreak) return rooms;
+  if (slot.roomName) {
+    rooms.push(slot.roomName.trim());
   }
   if (slot.isBatchSplit) {
-    if (slot.batch1?.roomName) rooms.push(slot.batch1.roomName);
-    if (slot.batch2?.roomName) rooms.push(slot.batch2.roomName);
+    if (slot.batch1?.roomName) rooms.push(slot.batch1.roomName.trim());
+    if (slot.batch2?.roomName) rooms.push(slot.batch2.roomName.trim());
   }
   return rooms.filter(Boolean);
 };
@@ -234,15 +237,23 @@ const validateGrid = (grid, data) => {
 
         // 5. Lab room double-booking
         for (const room of slotRoomNames(slot)) {
+          if (!room.toLowerCase().startsWith('lab')) continue;
           if (!labRoomSchedule[room]) labRoomSchedule[room] = {};
           if (!labRoomSchedule[room][day]) labRoomSchedule[room][day] = [];
 
           if (labRoomSchedule[room][day].includes(period)) {
             if (!slot.isOverride) {
               violations.push({
+                type: 'LAB_DOUBLE_BOOKING',
+                code: 'LAB_DOUBLE_BOOKING',
+                severity: 'hard',
+                message: `Lab room '${room}' is double-booked by multiple classes on ${day} period ${period}`,
+                room, day, period, classId,
+              });
+              violations.push({
                 type: 'LAB_ROOM_CONFLICT',
                 message: `Lab room '${room}' is used by multiple classes on ${day} period ${period}`,
-                room, day, period,
+                room, day, period, classId,
               });
             }
           } else {
@@ -263,28 +274,44 @@ const validateGrid = (grid, data) => {
           }
         }
 
-        // 7. Lab Room Mismatch (Validates slot against subject's allowedLabs)
-        if (slot.subjectType === 'lab' && slot.roomName) {
+        // 7. Strict Laboratory Allocation Matrix
+        const roomName = (slot.roomName || '').trim();
+        if (roomName.toLowerCase().startsWith('lab')) {
           const classSem = slot.classSemester || data.classMap?.[classId]?.semester || 0;
-          const isProject = slot.subjectCode?.includes('416') || slot.subjectName?.includes('Project Phase');
-          const subjectObj = (data.subjects || []).find((s) => s._id?.toString() === slot.subjectId?.toString());
-          const subjectAllowed = slot.allowedLabs || subjectObj?.allowedLabs || subjectObj?.labDetails?.allowedLabs;
+          const isProjectPhase2 = slot.subjectCode?.includes('416') || slot.subjectName?.includes('Project Phase');
 
-          let allowedRooms = [];
-          if (Array.isArray(subjectAllowed) && subjectAllowed.length > 0) {
-            allowedRooms = subjectAllowed;
-          } else if (classSem === 2 || isProject) {
-            allowedRooms = ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'];
-          } else {
-            allowedRooms = ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'];
-          }
-
-          if (allowedRooms.length > 0 && !allowedRooms.includes(slot.roomName) && !slot.isOverride) {
-            violations.push({
-              type: 'LAB_ROOM_MISMATCH',
-              message: `Class ${classId}: Lab assigned to ${slot.roomName} but requires ${allowedRooms.join(' or ')}`,
-              classId, day, period, room: slot.roomName,
-            });
+          if (classSem === 1 || classSem === 2) {
+            // S1/S2 practicals: Lab 1, Lab 2, Lab 3 only. Prohibit Lab 4.
+            if (roomName === 'Lab 4' && !slot.isOverride) {
+              violations.push({
+                type: 'INVALID_LAB_ASSIGNMENT',
+                severity: 'hard',
+                message: `Class ${classId} (Semester ${classSem}): '${slot.subjectName || slot.subjectCode}' is assigned to Lab 4, but S1/S2 practical sessions are restricted to Lab 1, Lab 2, or Lab 3`,
+                classId, day, period, room: roomName, semester: classSem,
+              });
+            }
+          } else if (classSem >= 3 && classSem <= 8) {
+            if (isProjectPhase2) {
+              // S8 Project Phase-2 takes place in classrooms, not exclusive Lab 1/2/3/4
+              if (['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'].includes(roomName) && !slot.isOverride) {
+                violations.push({
+                  type: 'INVALID_LAB_ASSIGNMENT',
+                  severity: 'hard',
+                  message: `Class ${classId} (Semester ${classSem}): Capstone Project '${slot.subjectName}' occupies ${roomName}, which is reserved for scheduled practical laboratory sessions`,
+                  classId, day, period, room: roomName, semester: classSem,
+                });
+              }
+            } else {
+              // S3-S8 applicable practicals and Mini Projects MUST use Lab 4. Prohibit Lab 1, Lab 2, Lab 3.
+              if (roomName !== 'Lab 4' && !slot.isOverride) {
+                violations.push({
+                  type: 'INVALID_LAB_ASSIGNMENT',
+                  severity: 'hard',
+                  message: `Class ${classId} (Semester ${classSem}): '${slot.subjectName || slot.subjectCode}' is assigned to ${roomName}, but all applicable practicals for S3–S8 must use designated Lab 4`,
+                  classId, day, period, room: roomName, semester: classSem,
+                });
+              }
+            }
           }
         }
 
@@ -363,6 +390,48 @@ const validateGrid = (grid, data) => {
           type: 'TEACHER_DAILY_LIMIT_EXCEEDED',
           message: `Teacher ${teacher?.name || teacherId} has ${periodCount} periods on ${day}, exceeding limit of ${customLimit}`,
           teacherId, day, periodsCount: periodCount, limit: customLimit,
+        });
+      }
+    }
+  }
+
+  // 8B. Global Faculty Rest-Gap Enforcement: Max 2 consecutive teaching periods globally
+  for (const [teacherId, daySchedule] of Object.entries(teacherSchedule)) {
+    const teacher = teacherMap[teacherId];
+    for (const [day, claims] of Object.entries(daySchedule || {})) {
+      const distinctPeriods = [...new Set(claims.map((c) => c.period))].sort((a, b) => a - b);
+      let run = [];
+      for (const p of distinctPeriods) {
+        if (run.length === 0 || p === run[run.length - 1] + 1) {
+          run.push(p);
+        } else {
+          if (run.length > 2) {
+            violations.push({
+              type: 'FACULTY_REST_GAP',
+              severity: 'hard',
+              message: `Faculty member ${teacher?.name || teacherId} has ${run.length} consecutive teaching periods on ${day} (Periods P${run[0]}–P${run[run.length - 1]}) without a rest gap. A guaranteed rest gap is required after at most 2 consecutive periods.`,
+              teacherId,
+              teacherName: teacher?.name || teacherId,
+              day,
+              period: run[0],
+              periods: [...run],
+              consecutiveCount: run.length,
+            });
+          }
+          run = [p];
+        }
+      }
+      if (run.length > 2) {
+        violations.push({
+          type: 'FACULTY_REST_GAP',
+          severity: 'hard',
+          message: `Faculty member ${teacher?.name || teacherId} has ${run.length} consecutive teaching periods on ${day} (Periods P${run[0]}–P${run[run.length - 1]}) without a rest gap. A guaranteed rest gap is required after at most 2 consecutive periods.`,
+          teacherId,
+          teacherName: teacher?.name || teacherId,
+          day,
+          period: run[0],
+          periods: [...run],
+          consecutiveCount: run.length,
         });
       }
     }
@@ -1051,20 +1120,35 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
       const effectiveLimit = isProjectSlot ? Math.max(customLimit, 6) : customLimit;
       if (teacherPeriodsOnDay + additionalPeriods > effectiveLimit) return false;
 
-      // Ensure breaks: No teacher teaches 3 or more continuous periods without a break
-      const isProjectExempt = slot.subjectCode === 'CSD416' || slot.subjectCode === 'CST416' || slot.subjectName?.includes('Project Phase');
-      if (!slot.isLabBlock && !isProjectExempt && !allowOvertime) {
-        const p = Number(period);
-        const m1 = distinctPeriodsOnDay.has(p - 1);
-        const m2 = distinctPeriodsOnDay.has(p - 2);
-        const p1 = distinctPeriodsOnDay.has(p + 1);
-        const p2 = distinctPeriodsOnDay.has(p + 2);
-        if ((m1 && m2) || (m1 && p1) || (p1 && p2)) return false;
+      // Faculty Rest-Gap Hard Constraint: Every faculty member at most 2 consecutive teaching periods globally
+      const candidatePeriods = new Set(distinctPeriodsOnDay);
+      candidatePeriods.add(Number(period));
+      const sortedPeriods = [...candidatePeriods].sort((a, b) => a - b);
+      let curConsecutive = 0;
+      let lastP = null;
+      for (const cp of sortedPeriods) {
+        if (lastP !== null && cp === lastP + 1) {
+          curConsecutive++;
+        } else {
+          curConsecutive = 1;
+        }
+        lastP = cp;
+        if (curConsecutive > 2) {
+          return false;
+        }
       }
     }
   }
 
   for (const room of slotRoomNames(slot)) {
+    if (room.toLowerCase().startsWith('lab')) {
+      const classSem = slot.classSemester || data.classMap?.[classId]?.semester || 0;
+      const isProjectPhase2 = slot.subjectCode === 'CSD416' || slot.subjectCode === 'CST416' || slot.subjectName?.includes('Project Phase');
+      if ((classSem === 1 || classSem === 2) && room === 'Lab 4') return false;
+      if (classSem >= 3 && classSem <= 8 && !isProjectPhase2 && room !== 'Lab 4') return false;
+      if (classSem >= 3 && classSem <= 8 && isProjectPhase2 && ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'].includes(room)) return false;
+    }
+
     for (const [otherClassId, dayMap] of Object.entries(grid)) {
       if (otherClassId === classId) continue;
       const existingSlot = dayMap[day]?.[period];

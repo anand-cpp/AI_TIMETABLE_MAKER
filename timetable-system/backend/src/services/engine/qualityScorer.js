@@ -211,7 +211,8 @@ const scoreGrid = (grid, data, validationResult = null) => {
   // 6. Laboratory Block Integrity (10 pts)
   const labViolations = hardViolations.filter(v => [
     'LAB_BLOCK_SPLIT', 'LAB_BLOCK_NON_CONSECUTIVE', 'LAB_BREAK_CROSSED',
-    'FRIDAY_P3_LAB_PROHIBITED', 'LAB_ROOM_MISMATCH', 'LAB_ROOM_CONFLICT'
+    'FRIDAY_P3_LAB_PROHIBITED', 'LAB_ROOM_MISMATCH', 'LAB_ROOM_CONFLICT',
+    'LAB_DOUBLE_BOOKING', 'INVALID_LAB_ASSIGNMENT'
   ].includes(v.type));
   let labScore = 10;
   let labExplanation = 'All lab sessions in valid contiguous blocks and designated rooms.';
@@ -224,7 +225,7 @@ const scoreGrid = (grid, data, validationResult = null) => {
         class: lv.classId,
         day: lv.day,
         reason: lv.message,
-        fix: 'Ensure contiguous block scheduling in authorized room (Lab 2/3 for S2 & Project, Lab 4 for ordinary).',
+        fix: 'Ensure contiguous block scheduling in authorized room (Lab 1-3 for S1/S2, Lab 4 for S3-S8 practicals).',
       });
     }
   }
@@ -254,6 +255,12 @@ const scoreGrid = (grid, data, validationResult = null) => {
       });
     }
   }
+  const softViolations = val.softViolations || val.warnings || [];
+  const softBalance = softViolations.filter(s => (s.type || '').includes('BALANCE') || (s.type || '').includes('DISTRIBUTION') || (s.type || '').includes('STRESS'));
+  if (softBalance.length > 0 && balanceScore > 4) {
+    balanceScore = Math.max(4, balanceScore - Math.min(3, Math.round(softBalance.length * 0.5)));
+    balanceExplanation += ` (${softBalance.length} distribution warning(s))`;
+  }
   dimensions.push({
     id: 'dailyBalance',
     name: 'Daily Balance & Distribution',
@@ -264,21 +271,26 @@ const scoreGrid = (grid, data, validationResult = null) => {
   });
 
   // 8. Faculty Continuity & Comfortable Gaps (10 pts)
-  const teacherOverloads = hardViolations.filter(v => v.type === 'TEACHER_DAILY_LIMIT_EXCEEDED');
+  const teacherOverloads = hardViolations.filter(v => v.type === 'TEACHER_DAILY_LIMIT_EXCEEDED' || v.type === 'FACULTY_REST_GAP');
   let continuityScore = 10;
   let continuityExplanation = 'Faculty loads distributed comfortably with adequate rest breaks.';
   if (teacherOverloads.length > 0) {
     continuityScore = Math.max(0, 10 - teacherOverloads.length * 2);
-    continuityExplanation = `${teacherOverloads.length} teacher daily load ceiling exceedance(s).`;
+    continuityExplanation = `${teacherOverloads.length} teacher daily load ceiling or rest-gap violation(s).`;
     for (const to of teacherOverloads) {
       issues.push({
         dimension: 'Faculty Continuity',
         faculty: to.teacherId,
         day: to.day,
         reason: to.message,
-        fix: 'Redistribute faculty periods across alternative weekdays to avoid daily overload.',
+        fix: 'Redistribute faculty periods across alternative weekdays to avoid daily overload or rest gap violations.',
       });
     }
+  }
+  const softFaculty = softViolations.filter(s => (s.type || '').includes('TEACHER') || (s.type || '').includes('FACULTY') || (s.type || '').includes('GAP'));
+  if (softFaculty.length > 0 && continuityScore > 4) {
+    continuityScore = Math.max(4, continuityScore - Math.min(3, Math.round(softFaculty.length * 0.5)));
+    continuityExplanation += ` (${softFaculty.length} faculty workload gap warning(s))`;
   }
   dimensions.push({
     id: 'facultyContinuity',
@@ -291,7 +303,17 @@ const scoreGrid = (grid, data, validationResult = null) => {
 
   const totalScore = dimensions.reduce((sum, d) => sum + d.score, 0);
   const isGated = hardViolations.length > 0;
-  const overall = isGated ? Math.min(totalScore, 49) : totalScore;
+
+  // Realistic score factoring in hard conflicts, soft warnings, and unplaced subjects
+  let overall = totalScore;
+  if (softViolations.length > 0) {
+    // Deduct points proportionally for soft warnings (e.g. 34 soft warnings -> ~17-20 pts penalty)
+    const softPenalty = Math.min(30, Math.round(softViolations.length * 0.6));
+    overall = Math.max(20, overall - softPenalty);
+  }
+  if (isGated) {
+    overall = Math.min(overall, Math.max(15, 48 - (hardViolations.length - 1) * 5));
+  }
 
   return {
     overall,

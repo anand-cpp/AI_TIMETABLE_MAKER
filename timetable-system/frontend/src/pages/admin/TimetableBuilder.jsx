@@ -706,32 +706,37 @@ const TimetableBuilder = () => {
                         onClick={() => {
                           setInlineIssuesCategory(inlineIssuesCategory === 'HARD_CONFLICTS' ? null : 'HARD_CONFLICTS');
                         }}
-                        className={`inline-flex flex-col items-start px-3 py-1.5 rounded-sm border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
+                        className={`inline-flex flex-col items-start px-3.5 py-2 rounded-md border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
                           diagnostics.summary.hardConflictsCount === 0
-                            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20'
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
                             : inlineIssuesCategory === 'HARD_CONFLICTS'
-                            ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500 ring-2 ring-rose-500/30'
-                            : 'bg-rose-500/10 text-rose-600 border-rose-500/30 hover:bg-rose-500/20 animate-pulse'
+                            ? 'bg-rose-500/20 text-rose-800 dark:text-rose-200 border-rose-500 ring-2 ring-rose-500/30'
+                            : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30 hover:bg-rose-500/20 animate-pulse'
                         }`}
                         title="Click to view exact hard conflicts and affected slots"
                       >
-                        <div className="flex items-center gap-1.5">
-                          {diagnostics.summary.hardConflictsCount === 0 ? (
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                          ) : (
-                            <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
-                          )}
-                          <span className="font-bold">
-                            Hard Conflicts:{' '}
-                            {diagnostics.summary.hardConflictsCount === 0
-                              ? '0 PASSED'
-                              : `${diagnostics.summary.hardConflictsCount} FAILED`}
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <div className="flex items-center gap-1.5">
+                            {diagnostics.summary.hardConflictsCount === 0 ? (
+                              <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                            ) : (
+                              <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
+                            )}
+                            <span className="font-bold text-xs">
+                              Hard Conflicts:{' '}
+                              {diagnostics.summary.hardConflictsCount === 0
+                                ? '0 PASSED'
+                                : `${diagnostics.summary.hardConflictsCount} FAILED`}
+                            </span>
+                          </div>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 font-semibold uppercase tracking-wider text-[10px]">
+                            About & Issues ▾
                           </span>
                         </div>
-                        <span className="text-[10px] opacity-80 mt-0.5">
+                        <span className="text-[11px] font-medium opacity-90 mt-1">
                           {diagnostics.summary.hardConflictsCount === 0
-                            ? 'Zero constraint conflicts'
-                            : (diagnostics.summary.hardConflictsSummary || 'Laboratory room collisions')}
+                            ? '✓ Zero constraint conflicts · All rules satisfied'
+                            : (diagnostics.summary.hardConflictsSummary || 'Laboratory room collisions & rest gap violations')}
                         </span>
                       </button>
 
@@ -740,21 +745,26 @@ const TimetableBuilder = () => {
                         onClick={() => {
                           setInlineIssuesCategory(inlineIssuesCategory === 'SOFT_WARNINGS' ? null : 'SOFT_WARNINGS');
                         }}
-                        className={`inline-flex flex-col items-start px-3 py-1.5 rounded-sm border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
+                        className={`inline-flex flex-col items-start px-3.5 py-2 rounded-md border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
                           inlineIssuesCategory === 'SOFT_WARNINGS'
                             ? 'bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500 ring-2 ring-amber-500/30'
                             : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
                         }`}
                         title="Click to view soft quality warnings and fatigue alerts"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                          <span className="font-bold">
-                            Soft Warnings: {diagnostics.summary.softWarningsCount}
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                            <span className="font-bold text-xs">
+                              Soft Warnings: {diagnostics.summary.softWarningsCount}
+                            </span>
+                          </div>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 font-semibold uppercase tracking-wider text-[10px]">
+                            About & Issues ▾
                           </span>
                         </div>
-                        <span className="text-[10px] opacity-80 mt-0.5">
-                          {diagnostics.summary.softWarningsSummary || 'Faculty fatigue (4+ consecutive)'}
+                        <span className="text-[11px] font-medium opacity-90 mt-1">
+                          {diagnostics.summary.softWarningsSummary || 'Faculty fatigue (4+ consecutive periods)'}
                         </span>
                       </button>
 
@@ -763,21 +773,26 @@ const TimetableBuilder = () => {
                         onClick={() => {
                           setInlineIssuesCategory(inlineIssuesCategory === 'OPTIMIZATION' ? null : 'OPTIMIZATION');
                         }}
-                        className={`inline-flex flex-col items-start px-3 py-1.5 rounded-sm border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
+                        className={`inline-flex flex-col items-start px-3.5 py-2 rounded-md border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
                           inlineIssuesCategory === 'OPTIMIZATION'
                             ? 'bg-purple-500/20 text-purple-800 dark:text-purple-200 border-purple-500 ring-2 ring-purple-500/30'
                             : 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 hover:bg-purple-500/20'
                         }`}
                         title="Click to view optimization opportunities and gap reductions"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <Lightbulb className="w-3.5 h-3.5 text-purple-500" />
-                          <span className="font-bold">
-                            Optimization: {diagnostics.summary.optimizationsCount} Opportunities
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <Lightbulb className="w-4 h-4 text-purple-500 shrink-0" />
+                            <span className="font-bold text-xs">
+                              Optimization: {diagnostics.summary.optimizationsCount} Opportunities
+                            </span>
+                          </div>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 font-semibold uppercase tracking-wider text-[10px]">
+                            About & Issues ▾
                           </span>
                         </div>
-                        <span className="text-[10px] opacity-80 mt-0.5">
-                          {diagnostics.summary.optimizationsSummary || 'Mid-day rest buffers & gaps'}
+                        <span className="text-[11px] font-medium opacity-90 mt-1">
+                          {diagnostics.summary.optimizationsSummary || 'Mid-day rest buffers & idle gaps'}
                         </span>
                       </button>
                     </div>
@@ -857,15 +872,15 @@ const TimetableBuilder = () => {
                       </div>
 
                       {/* "About" Educational Callout */}
-                      <div className={`p-3 rounded text-xs leading-relaxed border ${
+                      <div className={`p-3.5 rounded text-xs leading-relaxed border shadow-xs ${
                         inlineIssuesCategory === 'HARD_CONFLICTS'
-                          ? 'bg-rose-500/5 border-rose-500/20 text-rose-900 dark:text-rose-200'
+                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-950 dark:text-rose-100'
                           : inlineIssuesCategory === 'SOFT_WARNINGS'
-                          ? 'bg-amber-500/5 border-amber-500/20 text-amber-900 dark:text-amber-200'
-                          : 'bg-purple-500/5 border-purple-500/20 text-purple-900 dark:text-purple-200'
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-100'
+                          : 'bg-purple-500/10 border-purple-500/30 text-purple-950 dark:text-purple-100'
                       }`}>
-                        <div className="flex items-center gap-1.5 font-bold mb-1">
-                          <Info className="w-3.5 h-3.5 shrink-0" />
+                        <div className="flex items-center gap-2 font-bold mb-1.5 text-sm">
+                          <Info className="w-4 h-4 shrink-0 text-current" />
                           <span>
                             About{' '}
                             {inlineIssuesCategory === 'HARD_CONFLICTS'
@@ -875,12 +890,12 @@ const TimetableBuilder = () => {
                               : 'Optimization Opportunities (Schedule Flow Improvements)'}
                           </span>
                         </div>
-                        <p className="text-[11px] opacity-90">
+                        <p className="text-xs leading-relaxed opacity-95">
                           {inlineIssuesCategory === 'HARD_CONFLICTS'
-                            ? (diagnostics.summary.aboutHardConflicts || 'Physical or statutory collisions (such as laboratory rooms double-booked at the same hour or concurrent faculty overlaps). These represent impossible allocations that block publication and must be resolved.')
+                            ? (diagnostics.summary.aboutHardConflicts || 'Hard conflicts represent impossible allocations under statutory regulations and institutional rules (such as instructors assigned 3 or more consecutive teaching periods without a rest gap, laboratory rooms double-booked at the same hour, or practicals scheduled in unauthorized facilities). These violate basic institutional feasibility, prevent timetable publication, and must be resolved before proceeding.')
                             : inlineIssuesCategory === 'SOFT_WARNINGS'
-                            ? (diagnostics.summary.aboutSoftWarnings || 'Non-blocking workload and quality alerts (such as instructors assigned to 4 or more back-to-back periods without a rest break). These do not prevent generation but affect faculty comfort.')
-                            : (diagnostics.summary.aboutOptimization || 'Structural enhancements to eliminate idle student gaps before the final period or provide restorative lunch recovery intervals for faculty.')}
+                            ? (diagnostics.summary.aboutSoftWarnings || 'Soft warnings identify non-blocking pedagogical quality issues, such as instructors assigned to consecutive periods without an adequate gap, unbalanced daily teaching loads, or fragmented subject distribution across days. These do not prevent publication but significantly affect teaching comfort, student focus, and faculty satisfaction.')
+                            : (diagnostics.summary.aboutOptimization || 'Optimization opportunities highlight potential schedule improvements that can be safely applied, such as eliminating awkward 1-period idle gaps before afternoon classes or providing restorative lunch intervals for instructors without altering curriculum compliance.')}
                         </p>
                       </div>
 

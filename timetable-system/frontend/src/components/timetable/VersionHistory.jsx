@@ -67,10 +67,20 @@ const VersionHistory = ({
       {versions.map((version) => {
         const isActive = version._id === activeVersionId;
         const isAccepted = version.isAccepted;
-        const score = version.qualityScore?.overall ?? 85;
         const hasUnplaced = (version.unplacedSubjects?.length || 0) > 0;
         const hardViolationsCount = version.generationStats?.hardViolations ?? (version.validationChecks?.hardViolationsCount || 0);
         const softViolationsCount = version.generationStats?.softViolations ?? (version.warnings?.length || 0);
+
+        // Realistic Quality Score: Never give 100/100 if there are warnings or hard conflicts
+        let score = version.qualityScore?.overall;
+        if (score === undefined || score === null || (hardViolationsCount > 0 && score > 48) || (score === 100 && softViolationsCount > 0) || (score >= 90 && softViolationsCount >= 15)) {
+          let calc = 100 - (hardViolationsCount * 8) - (softViolationsCount * 0.6) - ((version.unplacedSubjects?.length || 0) * 10);
+          calc = Math.max(15, Math.min(100, Math.round(calc)));
+          if (hardViolationsCount > 0) {
+            calc = Math.min(calc, Math.max(15, 48 - (hardViolationsCount - 1) * 4));
+          }
+          score = calc;
+        }
 
         // Smart Publish Logic: Publishable if 0 unplaced subjects and 0 hard conflicts
         const isCriticalError = hasUnplaced || hardViolationsCount > 0 || score < 60;

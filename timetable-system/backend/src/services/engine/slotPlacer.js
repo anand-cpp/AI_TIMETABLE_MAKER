@@ -575,40 +575,30 @@ const placeLabSubject = (subject, classId, grid, data, randomize = false, option
   const allTeacherIds = [...teacherIds, ...coInstructorIds];
   const allTeacherNames = [...teacherNames, ...coInstructorNames];
 
-  // Determine lab room based on subject's allowedLabs and semester preferences
+  // Determine lab room strictly following Institutional Laboratory Allocation Matrix (Phase 2)
   const classSem = subject.classId?.semester || 0;
-  const userAllowed = (
-    (Array.isArray(subject.allowedLabs) && subject.allowedLabs.length > 0 ? subject.allowedLabs : null) ||
-    (Array.isArray(subject.labDetails?.allowedLabs) && subject.labDetails.allowedLabs.length > 0 ? subject.labDetails.allowedLabs : null)
-  );
+  const isMiniProject = (subject.name || '').toLowerCase().includes('mini project') || (subject.code || '').toUpperCase() === 'PCCSP608';
+  const isProjectPhase2 = (subject.code || '').toUpperCase() === 'CST416' || (subject.code || '').toUpperCase() === 'CSD416' || (subject.name || '').toLowerCase().includes('project phase');
 
-  let preferredRoom = subject.labRoom || subject.labDetails?.roomName || '';
-  if (!preferredRoom) {
-    if (classSem === 2) preferredRoom = LAB3_ROOM;
-    else if (classSem >= 4) preferredRoom = LAB4_ROOM;
-    else preferredRoom = LAB4_ROOM;
+  let roomsToTry = [];
+  if (isProjectPhase2) {
+    const clsName = subject.classId?.name || '';
+    roomsToTry = [clsName.includes(' B') ? 'Room 502' : 'Room 501'];
+  } else if (classSem === 1 || classSem === 2) {
+    // S1 / S2: Lab 1, Lab 2, Lab 3 only. Prohibit Lab 4.
+    if (isMiniProject) {
+      roomsToTry = ['Lab 3'];
+    } else {
+      roomsToTry = ['Lab 1', 'Lab 2', 'Lab 3'];
+    }
+  } else if (classSem >= 3 && classSem <= 8) {
+    // S3 through S8 practicals & Mini Projects: designated Lab 4 only. Prohibit Lab 1, 2, 3.
+    roomsToTry = ['Lab 4'];
+  } else {
+    roomsToTry = ['Lab 4'];
   }
 
   const roomOverride = (adminOverrides.roomOverrides || {})[subject._id.toString()];
-  if (roomOverride) preferredRoom = roomOverride;
-
-  let roomsToTry = [];
-  if (userAllowed && userAllowed.length > 0) {
-    if (userAllowed.includes(preferredRoom)) {
-      roomsToTry = [preferredRoom, ...userAllowed.filter((r) => r !== preferredRoom)];
-    } else {
-      roomsToTry = [...userAllowed];
-    }
-  } else {
-    roomsToTry = [preferredRoom];
-    if (allowAltRoom) {
-      const allStandardLabs = ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'];
-      for (const l of allStandardLabs) {
-        if (!roomsToTry.includes(l)) roomsToTry.push(l);
-      }
-    }
-  }
-
   if (roomOverride && !roomsToTry.includes(roomOverride)) {
     roomsToTry.unshift(roomOverride);
   }
@@ -741,8 +731,33 @@ const placeLabSubject = (subject, classId, grid, data, randomize = false, option
         // Place the block
         for (let i = 0; i < blockDuration; i++) {
           const period = startPeriod + i;
+
+          // Stagger instructors in 3-period lab blocks to guarantee faculty rest gaps
+          let slotTeachers = allTeacherIds;
+          let slotTeacherNames = allTeacherNames;
+          if (blockDuration === 3 && allTeacherIds.length >= 2) {
+            if (i === 0) {
+              slotTeachers = [allTeacherIds[0]];
+              slotTeacherNames = [allTeacherNames[0]];
+            } else if (i === 1) {
+              slotTeachers = allTeacherIds;
+              slotTeacherNames = allTeacherNames;
+            } else if (i === 2) {
+              slotTeachers = coInstructorIds.length > 0 ? coInstructorIds : [allTeacherIds[1]];
+              slotTeacherNames = coInstructorNames.length > 0 ? coInstructorNames : [allTeacherNames[1]];
+            }
+          } else if (isProjectPhase2 && blockDuration >= 6) {
+            // Coordinator takes P1-P2 and P4-P5; P3 and P6 are self-directed project execution / documentation
+            if (i === 2 || i === 5) {
+              slotTeachers = [];
+              slotTeacherNames = ['Project Committee'];
+            }
+          }
+
           grid[classId][day][period] = {
             ...baseSlotData,
+            teacherIds: slotTeachers,
+            teacherNames: slotTeacherNames,
             day,
             period,
             labBlockIndex: i,

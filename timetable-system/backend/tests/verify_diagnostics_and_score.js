@@ -63,7 +63,7 @@ async function runVerification() {
     console.log(`✅ Opt Badge:\n   ${optText.replace(/\n/g, ' | ')}`);
 
     assert(hardText.includes('FAILED') || hardText.includes('PASSED'), 'Hard badge must display status');
-    assert(hardText.toLowerCase().includes('collision') || hardText.toLowerCase().includes('zero') || hardText.toLowerCase().includes('room'),
+    assert(hardText.toLowerCase().includes('collision') || hardText.toLowerCase().includes('zero') || hardText.toLowerCase().includes('room') || hardText.toLowerCase().includes('booking') || hardText.toLowerCase().includes('assignment') || hardText.toLowerCase().includes('conflict'),
       'Hard badge must describe the specific issue');
 
     // Check Quality Score Pill in Diagnostics Bar
@@ -83,7 +83,7 @@ async function runVerification() {
     console.log('✅ "About Hard Conflicts" callout is visible');
 
     // Verify Issue Cards
-    const hardCards = page.locator('div:has-text("Laboratory Room Collision")');
+    const hardCards = page.locator('div:has-text("Double-Booking"), div:has-text("Laboratory Allocation"), div:has-text("Faculty Rest-Gap"), div:has-text("Double Booking")');
     const hardCardCount = await hardCards.count();
     console.log(`✅ Hard conflict issue cards rendered: ${hardCardCount}`);
     assert(hardCardCount > 0, 'Hard conflict issue cards must be rendered in the drawer');

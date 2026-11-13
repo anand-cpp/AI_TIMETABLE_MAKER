@@ -311,6 +311,137 @@ async function generateTimetableDiagnostics(timetable, customData = null) {
     }
   }
 
+  // G. Global Faculty Rest-Gap Violations (Hard Constraint: Max 2 consecutive teaching periods globally)
+  for (const t of data.teachers || []) {
+    const tid = t._id.toString();
+    for (const day of DAYS) {
+      const occupiedPeriods = [];
+      const periodAssignments = {};
+
+      for (let p = 1; p <= 6; p++) {
+        for (const [cid, dMap] of Object.entries(grid)) {
+          const slot = dMap[day]?.[p];
+          if (slot && !slot.isEmpty && !slot.isBreak && (slot.teacherIds || []).map(String).includes(tid)) {
+            if (!occupiedPeriods.includes(p)) occupiedPeriods.push(p);
+            if (!periodAssignments[p]) periodAssignments[p] = [];
+            periodAssignments[p].push({ classId: cid, className: classMap[cid]?.name || cid, slot });
+          }
+        }
+      }
+
+      occupiedPeriods.sort((a, b) => a - b);
+      let run = [];
+      for (const p of occupiedPeriods) {
+        if (run.length === 0 || p === run[run.length - 1] + 1) {
+          run.push(p);
+        } else {
+          if (run.length > 2) {
+            recordRestGapConflict(t, day, run, periodAssignments);
+          }
+          run = [p];
+        }
+      }
+      if (run.length > 2) {
+        recordRestGapConflict(t, day, run, periodAssignments);
+      }
+    }
+  }
+
+  function recordRestGapConflict(t, day, run, periodAssignments) {
+    const key = `FRG_${t._id}_${day}_${run[0]}`;
+    if (seenConflictKeys.has(key)) return;
+    seenConflictKeys.add(key);
+
+    const firstSlot = periodAssignments[run[0]]?.[0];
+    const details = run.map(p => {
+      const as = (periodAssignments[p] || []).map(x => `${x.className} (${x.slot.subjectName || x.slot.subjectCode})`).join(', ');
+      return `P${p}: ${as || 'Teaching'}`;
+    }).join(' | ');
+
+    hardConflicts.push({
+      id: `hc-frg-${hardConflicts.length + 1}`,
+      category: 'HARD_CONFLICT',
+      type: 'FACULTY_REST_GAP',
+      severity: 'CRITICAL',
+      title: 'Faculty Rest-Gap Violation',
+      day,
+      period: run[0],
+      periods: [...run],
+      teacherId: t._id.toString(),
+      teacherName: t.name,
+      classId: firstSlot?.classId || '',
+      className: firstSlot?.className || '',
+      subjectCode: firstSlot?.slot?.subjectCode || '',
+      subjectName: firstSlot?.slot?.subjectName || '',
+      consecutiveCount: run.length,
+      explanation: `Faculty member ${t.name} has ${run.length} consecutive teaching periods on ${day} (Periods P${run[0]}–P${run[run.length - 1]}) without a rest gap. Details: ${details}.`,
+      rootCause: 'Consecutive teaching commitments exceeding the institutional limit of 2 periods without an interspersed free resting period.',
+      resolution: `Introduce at least one complete free period after Period ${run[1]} or rearrange scheduled classes to guarantee faculty rest intervals.`,
+      status: 'ACTIVE',
+    });
+  }
+
+  // H. Strict Laboratory Allocation Matrix Violations
+  for (const [classId, dayMap] of Object.entries(grid)) {
+    const cls = classMap[classId];
+    const sem = cls?.semester || 0;
+    for (const day of DAYS) {
+      for (const period of PERIODS) {
+        const slot = dayMap[day]?.[period];
+        if (!slot || slot.isEmpty || slot.isBreak || !slot.roomName) continue;
+        const room = slot.roomName.trim();
+        if (!room.toLowerCase().startsWith('lab')) continue;
+
+        const isProjectPhase2 = (slot.subjectCode || '').toUpperCase() === 'CST416' || (slot.subjectCode || '').toUpperCase() === 'CSD416' || (slot.subjectName || '').toLowerCase().includes('project phase');
+
+        let isInvalid = false;
+        let expected = '';
+        if (sem === 1 || sem === 2) {
+          if (room === 'Lab 4') {
+            isInvalid = true;
+            expected = 'Lab 1, Lab 2, or Lab 3';
+          }
+        } else if (sem >= 3 && sem <= 8) {
+          if (isProjectPhase2) {
+            if (['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'].includes(room)) {
+              isInvalid = true;
+              expected = 'Departmental Classrooms (Room 501 / Room 502) without locking physical laboratory resources';
+            }
+          } else if (room !== 'Lab 4') {
+            isInvalid = true;
+            expected = 'Lab 4';
+          }
+        }
+
+        if (isInvalid) {
+          const key = `ILA_${classId}_${day}_${period}_${room}`;
+          if (!seenConflictKeys.has(key)) {
+            seenConflictKeys.add(key);
+            hardConflicts.push({
+              id: `hc-ila-${hardConflicts.length + 1}`,
+              category: 'HARD_CONFLICT',
+              type: 'INVALID_LAB_ASSIGNMENT',
+              severity: 'CRITICAL',
+              title: 'Invalid Laboratory Allocation',
+              day,
+              period,
+              roomName: room,
+              classId,
+              className: cls?.name || `Class ${classId}`,
+              subjectCode: slot.subjectCode,
+              subjectName: slot.subjectName,
+              teacherName: (slot.teacherNames || []).join(', '),
+              explanation: `Class ${cls?.name || classId} (${slot.subjectName || slot.subjectCode}) is allocated to '${room}', but semester ${sem} practical sessions must use ${expected}.`,
+              rootCause: 'Assignment of a laboratory facility outside the mandatory institutional laboratory allocation matrix.',
+              resolution: `Reassign this practical session to an eligible facility (${expected}).`,
+              status: 'ACTIVE',
+            });
+          }
+        }
+      }
+    }
+  }
+
   // -------------------------------------------------------------
   // 2. SOFT WARNINGS DETECTION & QUALITY EXPLANATION
   // -------------------------------------------------------------
@@ -506,19 +637,31 @@ async function generateTimetableDiagnostics(timetable, customData = null) {
   const optCount = optimizations.length;
   const unplacedCount = (timetable.unplacedSubjects || []).length;
 
-  let computedScore = 100 - (hardCount * 8) - (softCount * 1.5) - (optCount * 0.5) - (unplacedCount * 10);
+  let computedScore = 100 - (hardCount * 8) - (softCount * 0.6) - (optCount * 0.25) - (unplacedCount * 10);
   computedScore = Math.max(15, Math.min(100, Math.round(computedScore)));
   if (hardCount > 0) {
-    computedScore = Math.min(computedScore, 48); // Critical failures cannot receive a passing grade
+    computedScore = Math.min(computedScore, Math.max(15, 48 - (hardCount - 1) * 4)); // Critical failures cannot receive a passing grade
   }
 
   // Descriptive summaries of what the issues are in each category
+  const labDoubles = hardConflicts.filter(h => h.type === 'LAB_ROOM_CONFLICT' || h.type === 'LAB_DOUBLE_BOOKING').length;
+  const restGaps = hardConflicts.filter(h => h.type === 'FACULTY_REST_GAP').length;
+  const invalidLabs = hardConflicts.filter(h => h.type === 'INVALID_LAB_ASSIGNMENT').length;
+  const facultyDoubles = hardConflicts.filter(h => h.type === 'TEACHER_DOUBLE_BOOKED').length;
+
+  let hardSummaryParts = [];
+  if (labDoubles > 0) hardSummaryParts.push(`${labDoubles} Lab Double-Booking(s)`);
+  if (invalidLabs > 0) hardSummaryParts.push(`${invalidLabs} Invalid Lab Assignment(s)`);
+  if (restGaps > 0) hardSummaryParts.push(`${restGaps} Faculty Rest-Gap Violation(s)`);
+  if (facultyDoubles > 0) hardSummaryParts.push(`${facultyDoubles} Faculty Double-Booking(s)`);
+  if (hardSummaryParts.length === 0 && hardCount > 0) hardSummaryParts.push(`${hardCount} Constraint Conflict(s)`);
+
   const hardConflictsSummary = hardCount > 0
-    ? `${hardCount} Room Double-Booking(s) in Lab 2 & Lab 3`
+    ? hardSummaryParts.slice(0, 2).join(' & ')
     : 'Zero hard constraint conflicts';
 
   const softWarningsSummary = softCount > 0
-    ? `${softCount} Faculty High Consecutive Load(s) (4+ periods)`
+    ? `${softCount} Pedagogical Quality & Continuity Alert(s)`
     : 'Zero soft quality warnings';
 
   const optimizationsSummary = optCount > 0
@@ -538,8 +681,8 @@ async function generateTimetableDiagnostics(timetable, customData = null) {
       hardConflictsSummary,
       softWarningsSummary,
       optimizationsSummary,
-      aboutHardConflicts: 'Critical constraint violations (e.g. laboratory room double-bookings or concurrent faculty assignments) that block timetable validity and must be resolved before publication.',
-      aboutSoftWarnings: 'Non-blocking quality alerts (such as instructors scheduled for 4 consecutive periods without a resting interval) that impact faculty fatigue and comfort.',
+      aboutHardConflicts: 'Critical constraint violations (e.g. faculty rest-gap violations, laboratory room double-bookings, or invalid laboratory allocations) that block timetable validity and must be resolved before publication.',
+      aboutSoftWarnings: 'Non-blocking quality alerts (such as instructors scheduled for consecutive periods without a resting interval) that impact faculty fatigue and comfort.',
       aboutOptimization: 'Structural enhancements to streamline schedules (such as eliminating idle gap periods before the final hour or providing restorative lunch intervals).',
     },
     hardConflicts,
