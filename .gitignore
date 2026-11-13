@@ -96,4 +96,9 @@ timetable-system/backend/scripts/*
 !timetable-system/backend/scripts/setTeacherDailyLimit.js
 !timetable-system/backend/scripts/verifyDemoData.js
 timetable-system/backend/reconcile_database.js
+*.png
+timetable-system/backend/tests/screenshots/
+timetable-system/backend/tests/inspect_browser_state.js
+timetable-system/backend/tests/test_generate_flow.js
+
 
