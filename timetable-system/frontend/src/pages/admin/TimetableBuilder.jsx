@@ -705,8 +705,7 @@ const TimetableBuilder = () => {
                       <button
                         onClick={() => {
                           setDiagnosticsTab('HARD_CONFLICTS');
-                          setDiagnosticsModalOpen(true);
-                          setInlineIssuesCategory('HARD_CONFLICTS');
+                          setInlineIssuesCategory(inlineIssuesCategory === 'HARD_CONFLICTS' ? null : 'HARD_CONFLICTS');
                         }}
                         className={`inline-flex flex-col items-start px-3.5 py-2 rounded-md border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
                           diagnostics.summary.hardConflictsCount === 0
@@ -746,8 +745,7 @@ const TimetableBuilder = () => {
                       <button
                         onClick={() => {
                           setDiagnosticsTab('SOFT_WARNINGS');
-                          setDiagnosticsModalOpen(true);
-                          setInlineIssuesCategory('SOFT_WARNINGS');
+                          setInlineIssuesCategory(inlineIssuesCategory === 'SOFT_WARNINGS' ? null : 'SOFT_WARNINGS');
                         }}
                         className={`inline-flex flex-col items-start px-3.5 py-2 rounded-md border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
                           inlineIssuesCategory === 'SOFT_WARNINGS'
@@ -768,7 +766,9 @@ const TimetableBuilder = () => {
                           </span>
                         </div>
                         <span className="text-[11px] font-medium opacity-90 mt-1">
-                          {diagnostics.summary.softWarningsSummary || 'Faculty fatigue (4+ consecutive periods)'}
+                          {diagnostics.summary.softWarningsCount === 0
+                            ? '✓ Zero soft quality warnings'
+                            : (diagnostics.summary.softWarningsSummary || 'Faculty fatigue (4+ consecutive periods)')}
                         </span>
                       </button>
 
@@ -776,8 +776,7 @@ const TimetableBuilder = () => {
                       <button
                         onClick={() => {
                           setDiagnosticsTab('OPTIMIZATION');
-                          setDiagnosticsModalOpen(true);
-                          setInlineIssuesCategory('OPTIMIZATION');
+                          setInlineIssuesCategory(inlineIssuesCategory === 'OPTIMIZATION' ? null : 'OPTIMIZATION');
                         }}
                         className={`inline-flex flex-col items-start px-3.5 py-2 rounded-md border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
                           inlineIssuesCategory === 'OPTIMIZATION'
@@ -798,7 +797,9 @@ const TimetableBuilder = () => {
                           </span>
                         </div>
                         <span className="text-[11px] font-medium opacity-90 mt-1">
-                          {diagnostics.summary.optimizationsSummary || 'Mid-day rest buffers & idle gaps'}
+                          {diagnostics.summary.optimizationsCount === 0
+                            ? '✓ Timetable fully optimized'
+                            : (diagnostics.summary.optimizationsSummary || 'Mid-day rest buffers & idle gaps')}
                         </span>
                       </button>
                     </div>

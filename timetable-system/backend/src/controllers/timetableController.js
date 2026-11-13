@@ -98,16 +98,18 @@ const getVersions = async (req, res) => {
       const unplacedCount = (vObj.unplacedSubjects?.length || 0);
 
       // Never give 100/100 if there are warnings, unplaced slots, or hard conflicts
-      let score = vObj.qualityScore?.overall;
-      if (score === undefined || score === null || (hardCount > 0 && score > 48) || (score === 100 && softCount > 0) || (score >= 90 && softCount >= 15)) {
-        let calcScore = 100 - (hardCount * 8) - (softCount * 0.6) - (unplacedCount * 10);
-        calcScore = Math.max(15, Math.min(100, Math.round(calcScore)));
-        if (hardCount > 0) {
-          calcScore = Math.min(calcScore, Math.max(15, 48 - (hardCount - 1) * 4));
+      let score = 100;
+      if (hardCount > 0) {
+        score = Math.max(15, 48 - (hardCount - 1) * 4);
+      } else {
+        const softPenalty = Math.round(softCount * 0.6);
+        const unplacedPenalty = unplacedCount * 10;
+        score = Math.max(20, Math.min(100, 100 - softPenalty - unplacedPenalty));
+        if (typeof vObj.qualityScore?.overall === 'number' && vObj.qualityScore.overall < score) {
+          score = vObj.qualityScore.overall;
         }
-        score = calcScore;
-        vObj.qualityScore = { ...(vObj.qualityScore || {}), overall: score };
       }
+      vObj.qualityScore = { ...(vObj.qualityScore || {}), overall: score };
       return vObj;
     });
 
@@ -122,6 +124,25 @@ const getVersion = async (req, res) => {
   try {
     const timetable = await Timetable.findById(req.params.id);
     if (!timetable) return sendError(res, 404, 'Timetable version not found');
+
+    if (timetable.qualityScore) {
+      const hCount = timetable.generationStats?.hardViolations || 0;
+      const sCount = timetable.generationStats?.softViolations || (timetable.warnings?.length || 0);
+      const uCount = (timetable.unplacedSubjects?.length || 0);
+      let score = 100;
+      if (hCount > 0) {
+        score = Math.max(15, 48 - (hCount - 1) * 4);
+      } else {
+        const sPenalty = Math.round(sCount * 0.6);
+        const uPenalty = uCount * 10;
+        score = Math.max(20, Math.min(100, 100 - sPenalty - uPenalty));
+        if (typeof timetable.qualityScore?.overall === 'number' && timetable.qualityScore.overall < score) {
+          score = timetable.qualityScore.overall;
+        }
+      }
+      timetable.qualityScore.overall = score;
+    }
+
     return sendSuccess(res, 200, { timetable });
   } catch (error) {
     return sendError(res, 500, error.message);

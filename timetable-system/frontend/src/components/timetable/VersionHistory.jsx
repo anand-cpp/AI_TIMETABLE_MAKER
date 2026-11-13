@@ -13,6 +13,29 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
+export const computeRealisticScore = (version) => {
+  if (!version) return 100;
+  const unplacedCount = version.unplacedSubjects?.length || 0;
+  const hardViolationsCount = version.generationStats?.hardViolations ?? (version.validationChecks?.hardViolationsCount || 0);
+  const softViolationsCount = version.generationStats?.softViolations ?? (version.warnings?.length || 0);
+
+  // Critical failure: hard conflicts prevent a passing score
+  if (hardViolationsCount > 0) {
+    return Math.max(15, 48 - (hardViolationsCount - 1) * 4);
+  }
+
+  // Deduct for soft warnings, unplaced subjects, and optimization flaws
+  const softPenalty = Math.round(softViolationsCount * 0.6);
+  const unplacedPenalty = unplacedCount * 10;
+  let score = Math.max(20, Math.min(100, 100 - softPenalty - unplacedPenalty));
+
+  // If a lower score was computed by backend breakdown, respect that lower score
+  if (typeof version.qualityScore?.overall === 'number' && version.qualityScore.overall < score) {
+    score = version.qualityScore.overall;
+  }
+  return score;
+};
+
 const VersionHistory = ({
   versions,
   loading,
@@ -72,15 +95,7 @@ const VersionHistory = ({
         const softViolationsCount = version.generationStats?.softViolations ?? (version.warnings?.length || 0);
 
         // Realistic Quality Score: Never give 100/100 if there are warnings or hard conflicts
-        let score = version.qualityScore?.overall;
-        if (score === undefined || score === null || (hardViolationsCount > 0 && score > 48) || (score === 100 && softViolationsCount > 0) || (score >= 90 && softViolationsCount >= 15)) {
-          let calc = 100 - (hardViolationsCount * 8) - (softViolationsCount * 0.6) - ((version.unplacedSubjects?.length || 0) * 10);
-          calc = Math.max(15, Math.min(100, Math.round(calc)));
-          if (hardViolationsCount > 0) {
-            calc = Math.min(calc, Math.max(15, 48 - (hardViolationsCount - 1) * 4));
-          }
-          score = calc;
-        }
+        const score = computeRealisticScore(version);
 
         // Smart Publish Logic: Publishable if 0 unplaced subjects and 0 hard conflicts
         const isCriticalError = hasUnplaced || hardViolationsCount > 0 || score < 60;
@@ -201,8 +216,8 @@ const VersionHistory = ({
           onClose={() => setPublishTargetVersion(null)}
           onConfirm={handleModalConfirm}
           versionNumber={publishTargetVersion.version}
-          qualityScore={publishTargetVersion.qualityScore?.overall || 85}
-          softViolationsCount={publishTargetVersion.generationStats?.softViolations || 34}
+          qualityScore={computeRealisticScore(publishTargetVersion)}
+          softViolationsCount={publishTargetVersion.generationStats?.softViolations ?? (publishTargetVersion.warnings?.length || 0)}
         />
       )}
     </div>
