@@ -4,11 +4,14 @@ import Select from '../ui/Select';
 import Toggle from '../ui/Toggle';
 import teacherService from '../../services/teacherService';
 import subjectService from '../../services/subjectService';
+import { FlaskConical, CheckSquare, Square, Check, Sparkles } from 'lucide-react';
 
 const DURATION_OPTIONS = [
   { value: '2', label: '2 Consecutive Periods' },
   { value: '3', label: '3 Consecutive Periods' },
 ];
+
+const STANDARD_LABS = ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'];
 
 const LabFields = ({ register, errors, setValue, initialData }) => {
   const [teachers, setTeachers] = useState([]);
@@ -16,6 +19,7 @@ const LabFields = ({ register, errors, setValue, initialData }) => {
   const [isBatchSplit, setIsBatchSplit] = useState(false);
   const [morningPreference, setMorningPreference] = useState(false);
   const [selectedTeachers, setSelectedTeachers] = useState([]);
+  const [selectedLabs, setSelectedLabs] = useState(['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4']);
 
   useEffect(() => {
     Promise.all([
@@ -28,11 +32,20 @@ const LabFields = ({ register, errors, setValue, initialData }) => {
   }, []);
 
   useEffect(() => {
-    if (initialData?.labDetails) {
-      const ld = initialData.labDetails;
+    if (initialData?.labDetails || initialData?.allowedLabs) {
+      const ld = initialData.labDetails || {};
       setIsBatchSplit(ld.isBatchSplit || false);
       setMorningPreference(ld.morningPreference || false);
-      setValue('labDetails.roomName', ld.roomName || '');
+
+      const existingAllowed = ld.allowedLabs || initialData.allowedLabs;
+      const initialRooms = Array.isArray(existingAllowed) && existingAllowed.length > 0
+        ? existingAllowed
+        : (ld.roomName ? [ld.roomName] : ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4']);
+
+      setSelectedLabs(initialRooms);
+      setValue('labDetails.allowedLabs', initialRooms);
+      setValue('allowedLabs', initialRooms);
+      setValue('labDetails.roomName', ld.roomName || initialRooms[0] || 'Lab 4');
       setValue('labDetails.duration', String(ld.duration || 2));
       setValue('labDetails.batch1Room', ld.batch1Room || '');
       setValue('labDetails.batch2Room', ld.batch2Room || '');
@@ -40,7 +53,12 @@ const LabFields = ({ register, errors, setValue, initialData }) => {
         ld.batch1Teacher?._id || ld.batch1Teacher || '');
       setValue('labDetails.batch2Teacher',
         ld.batch2Teacher?._id || ld.batch2Teacher || '');
+    } else {
+      setValue('labDetails.allowedLabs', ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4']);
+      setValue('allowedLabs', ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4']);
+      setValue('labDetails.roomName', 'Lab 4');
     }
+
     if (initialData?.teachers) {
       const ids = initialData.teachers.map((t) =>
         t._id ? t._id.toString() : t.toString()
@@ -66,6 +84,40 @@ const LabFields = ({ register, errors, setValue, initialData }) => {
       : [...selectedTeachers, teacherId];
     setSelectedTeachers(updated);
     setValue('teachers', updated);
+  };
+
+  const handleLabToggle = (labName) => {
+    let updated;
+    if (selectedLabs.includes(labName)) {
+      if (selectedLabs.length === 1) {
+        // Keep at least one selected
+        return;
+      }
+      updated = selectedLabs.filter((l) => l !== labName);
+    } else {
+      updated = [...selectedLabs, labName];
+    }
+    setSelectedLabs(updated);
+    setValue('labDetails.allowedLabs', updated);
+    setValue('allowedLabs', updated);
+    setValue('labDetails.roomName', updated[0] || '');
+  };
+
+  const handleSelectAllLabs = () => {
+    if (selectedLabs.length === STANDARD_LABS.length) {
+      // Toggle to just Lab 1
+      const updated = ['Lab 1'];
+      setSelectedLabs(updated);
+      setValue('labDetails.allowedLabs', updated);
+      setValue('allowedLabs', updated);
+      setValue('labDetails.roomName', 'Lab 1');
+    } else {
+      const updated = [...STANDARD_LABS];
+      setSelectedLabs(updated);
+      setValue('labDetails.allowedLabs', updated);
+      setValue('allowedLabs', updated);
+      setValue('labDetails.roomName', updated[0]);
+    }
   };
 
   const teacherOptions = teachers.map((t) => ({
@@ -123,7 +175,8 @@ const LabFields = ({ register, errors, setValue, initialData }) => {
               <Input
                 label="Batch 1 Room"
                 required
-                placeholder="e.g. Lab A"
+                placeholder="e.g. Lab 1"
+                list="lab-rooms-list"
                 error={errors.labDetails?.batch1Room?.message}
                 {...register('labDetails.batch1Room', {
                   required: 'Batch 1 room is required',
@@ -150,7 +203,8 @@ const LabFields = ({ register, errors, setValue, initialData }) => {
               <Input
                 label="Batch 2 Room"
                 required
-                placeholder="e.g. Lab B"
+                placeholder="e.g. Lab 2"
+                list="lab-rooms-list"
                 error={errors.labDetails?.batch2Room?.message}
                 {...register('labDetails.batch2Room', {
                   required: 'Batch 2 room is required',
@@ -162,20 +216,72 @@ const LabFields = ({ register, errors, setValue, initialData }) => {
       ) : (
         /* Normal Lab Fields */
         <div className="space-y-4">
-          <Input
-            label="Lab Room Name"
-            required
-            placeholder="e.g. Computer Lab 1"
-            hint="Used to detect room conflicts across classes"
-            error={errors.labDetails?.roomName?.message}
-            list="lab-rooms-list"
-            {...register('labDetails.roomName', {
-              required: 'Lab room name is required',
-            })}
-          />
+          {/* 4 Lab Room Selection (Lab 1, Lab 2, Lab 3, Lab 4) with Select All 4 Labs */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-200">
+                Eligible Lab Rooms <span className="text-rose-600 dark:text-rose-400 ml-1">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={handleSelectAllLabs}
+                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {selectedLabs.length === STANDARD_LABS.length ? 'Deselect Extra' : 'Select All 4 Labs'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {STANDARD_LABS.map((labName) => {
+                const isSelected = selectedLabs.includes(labName);
+                return (
+                  <div
+                    key={labName}
+                    onClick={() => handleLabToggle(labName)}
+                    className={`cursor-pointer p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all text-center select-none ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50/80 dark:bg-blue-950/40 dark:border-blue-500 shadow-sm ring-1 ring-blue-500/20'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:border-slate-300 dark:hover:border-slate-700 opacity-70'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <FlaskConical className={`w-4 h-4 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}}
+                        className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 pointer-events-none"
+                      />
+                    </div>
+                    <span className={`text-sm font-bold ${isSelected ? 'text-blue-900 dark:text-blue-100' : 'text-slate-700 dark:text-slate-300'}`}>
+                      {labName}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {isSelected ? 'Eligible' : 'Excluded'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              Selecting multiple labs (or all 4) allows the timetable engine to place this session into any free room, preventing room collisions or double-booking.
+            </p>
+            {selectedLabs.length === 0 && (
+              <p className="form-error">At least one lab room must be selected</p>
+            )}
+          </div>
+
+          {/* Hidden inputs to bind roomName and allowedLabs */}
+          <input type="hidden" {...register('labDetails.roomName')} />
+
           {labRooms.length > 0 && (
             <datalist id="lab-rooms-list">
-              {labRooms.map((r) => (
+              {STANDARD_LABS.map((r) => (
+                <option key={r} value={r} />
+              ))}
+              {labRooms.filter((r) => !STANDARD_LABS.includes(r)).map((r) => (
                 <option key={r} value={r} />
               ))}
             </datalist>

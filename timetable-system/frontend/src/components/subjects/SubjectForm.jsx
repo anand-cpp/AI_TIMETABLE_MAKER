@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
@@ -30,6 +30,15 @@ const SubjectForm = ({
   const [selectedClassIds, setSelectedClassIds] = useState([]);
   const [classError, setClassError] = useState('');
 
+  const classOptions = useMemo(() => {
+    return (classes || []).map((c) => ({
+      value: c._id,
+      label: (c.name || ('S' + c.semester + ' ' + c.section)) + (c.departmentId?.code ? ' (' + c.departmentId.code + ')' : ''),
+      section: c.section,
+      semester: c.semester,
+    }));
+  }, [classes]);
+
   const {
     register,
     handleSubmit,
@@ -45,8 +54,10 @@ const SubjectForm = ({
       type: 'theory',
       weeklyHours: '',
       teachers: [],
+      allowedLabs: ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'],
       labDetails: {
-        roomName: '',
+        roomName: 'Lab 4',
+        allowedLabs: ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'],
         duration: '2',
         isBatchSplit: false,
         batch1Teacher: '',
@@ -286,7 +297,7 @@ const SubjectForm = ({
           <Select
             disabled
             options={classOptions.filter(c => 
-              electiveGroupContext.sections.includes(c.label.split('Sec ')[1]?.charAt(0))
+              (electiveGroupContext?.sections || []).includes(c.section || c.label.split('Sec ')[1]?.charAt(0))
             )}
             placeholder="Auto-assigned from group sections"
             {...register('classId')}
