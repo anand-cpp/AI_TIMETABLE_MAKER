@@ -26,7 +26,7 @@ import {
 import { cn } from '../../utils/cn';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-const PERIODS = [1, 2, 3, 4, 5, 6, 7];
+const PERIODS = [1, 2, 3, 4, 5, 6];
 
 const DepartmentTimetable = () => {
   const navigate = useNavigate();
@@ -41,7 +41,7 @@ const DepartmentTimetable = () => {
   // Step 2 options
   const [selectedYears, setSelectedYears] = useState([1, 2, 3, 4]);
   const [selectedSections, setSelectedSections] = useState(['A', 'B', 'C']);
-  const [periodsPerDay, setPeriodsPerDay] = useState(7);
+  const [periodsPerDay, setPeriodsPerDay] = useState(6);
   const [includeSaturday, setIncludeSaturday] = useState(false);
 
   // Step 3 Cross-Dept Teachers

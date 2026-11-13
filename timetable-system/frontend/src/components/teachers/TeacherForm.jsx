@@ -12,7 +12,7 @@ const TeacherForm = ({ onSubmit, onCancel, loading, initialData }) => {
   const [departments, setDepartments] = useState([]);
   const [unavailability, setUnavailability] = useState([]);
   const [morningLabPreference, setMorningLabPreference] = useState(false);
-  const [periods, setPeriods] = useState([1, 2, 3, 4, 5, 6, 7]);
+  const [periods, setPeriods] = useState([1, 2, 3, 4, 5, 6]);
 
   const {
     register,

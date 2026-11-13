@@ -23,7 +23,7 @@ import {
 import { cn } from '../../utils/cn';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-const PERIODS = [1, 2, 3, 4, 5, 6, 7];
+const PERIODS = [1, 2, 3, 4, 5, 6];
 
 const YearTimetable = () => {
   const navigate = useNavigate();

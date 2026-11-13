@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import PageHeader from '../../components/ui/PageHeader';
@@ -8,12 +8,14 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Breadcrumb from '../../components/ui/Breadcrumb';
 import TeacherList from '../../components/teachers/TeacherList';
 import TeacherForm from '../../components/teachers/TeacherForm';
+import TeacherPersonalTimetableModal from '../../components/teachers/TeacherPersonalTimetableModal';
 import teacherService from '../../services/teacherService';
-import { Plus, Users, Copy, Check, Eye, EyeOff } from 'lucide-react';
+import { Plus, Users, Copy, Check, Eye, EyeOff, Search } from 'lucide-react';
 
 const Teachers = () => {
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -23,15 +25,26 @@ const Teachers = () => {
   const [credModalOpen, setCredModalOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState('');
+
+  // Personal Timetable Modal State
+  const [personalTimetableTarget, setPersonalTimetableTarget] = useState(null);
+
   const navigate = useNavigate();
 
   const load = async () => {
     try {
       setLoading(true);
-      const res = await teacherService.getAll();
-      setTeachers(res.data.teachers || []);
+      // Fetch comprehensive faculty workload overview
+      const res = await teacherService.getWorkloadOverview();
+      setTeachers(res.data?.faculty || []);
     } catch {
-      toast.error('Failed to load teachers');
+      // Fallback to basic getAll
+      try {
+        const fallbackRes = await teacherService.getAll();
+        setTeachers(fallbackRes.data?.teachers || []);
+      } catch (err) {
+        toast.error('Failed to load faculty records');
+      }
     } finally {
       setLoading(false);
     }
@@ -39,8 +52,25 @@ const Teachers = () => {
 
   useEffect(() => { load(); }, []);
 
+  const filteredTeachers = useMemo(() => {
+    if (!searchQuery.trim()) return teachers;
+    const q = searchQuery.toLowerCase();
+    return teachers.filter((t) => {
+      const matchName = t.name?.toLowerCase().includes(q);
+      const matchDept = t.department?.toLowerCase().includes(q) || t.departmentCode?.toLowerCase().includes(q);
+      const matchSub = (t.assignedSubjects || []).some(
+        s => (s.code && s.code.toLowerCase().includes(q)) || (s.name && s.name.toLowerCase().includes(q))
+      );
+      return matchName || matchDept || matchSub;
+    });
+  }, [teachers, searchQuery]);
+
   const handleViewProfile = (teacher) => {
     navigate(`/admin/teachers/${teacher._id}/profile`);
+  };
+
+  const handleViewPersonalTimetable = (teacher) => {
+    setPersonalTimetableTarget(teacher);
   };
 
   const handleOpenCreate = () => {
@@ -130,8 +160,8 @@ const Teachers = () => {
       <Breadcrumb items={[{ label: 'Setup', to: '/admin/departments' }, { label: 'Teachers' }]} />
 
       <PageHeader
-        title="Faculty / Teachers"
-        description="Add teacher accounts, set availability, and manage workload limits (Step 3 of 4 in setup)"
+        title="Faculty Management & Workload Overview"
+        description="Search faculty profiles, inspect scheduled teaching hours, and view individual personal timetables."
         action={
           <Button
             onClick={handleOpenCreate}
@@ -142,26 +172,51 @@ const Teachers = () => {
         }
       />
 
-      <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-0 overflow-hidden">
-        <div className="px-6 py-4 border-b border-[var(--border)] flex items-center gap-2">
-          <Users className="w-4 h-4 text-[var(--text-muted)]" strokeWidth={1.5} />
-          <span className="text-xs font-sans font-medium text-[var(--text-primary)]">
-            {teachers.length} Teacher{teachers.length !== 1 ? 's' : ''}
-          </span>
-          <span className="text-[var(--text-muted)] text-xs">·</span>
-          <span className="text-xs font-sans text-[var(--text-secondary)]">
-            {teachers.filter((t) => t.isActive).length} active
-          </span>
+      {/* Overview Table Card */}
+      <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-0 overflow-hidden shadow-xs">
+        {/* Table Top Controls & Search */}
+        <div className="px-6 py-4 border-b border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-[var(--text-muted)]" strokeWidth={1.5} />
+            <span className="text-xs font-sans font-medium text-[var(--text-primary)]">
+              {teachers.length} Faculty Member{teachers.length !== 1 ? 's' : ''}
+            </span>
+            <span className="text-[var(--text-muted)] text-xs">·</span>
+            <span className="text-xs font-sans text-emerald-500 font-medium">
+              {teachers.filter((t) => t.isActive).length} active
+            </span>
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            <input
+              type="text"
+              placeholder="Filter by name, dept, subject..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-[var(--bg-surface-alt)] border border-[var(--border)] rounded-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+            />
+          </div>
         </div>
+
         <TeacherList
-          teachers={teachers}
+          teachers={filteredTeachers}
           loading={loading}
           onEdit={handleOpenEdit}
           onDelete={setDeleteTarget}
           onShowCredentials={handleShowCredentials}
           onViewProfile={handleViewProfile}
+          onViewPersonalTimetable={handleViewPersonalTimetable}
         />
       </div>
+
+      {/* Individual Teacher Personal Timetable Modal */}
+      <TeacherPersonalTimetableModal
+        isOpen={!!personalTimetableTarget}
+        onClose={() => setPersonalTimetableTarget(null)}
+        teacherId={personalTimetableTarget?._id}
+        teacherName={personalTimetableTarget?.name}
+      />
 
       {/* Create/Edit Modal */}
       <Modal
@@ -198,77 +253,81 @@ const Teachers = () => {
           {credentials && (
             <div className="space-y-3">
               <div>
-                <p className="text-[10px] font-sans font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Teacher Name</p>
-                <p className="text-sm font-serif font-normal text-[var(--text-primary)]">{credentials.name}</p>
+                <label className="text-[11px] font-mono uppercase text-[var(--text-label)] block mb-1">
+                  Faculty Name
+                </label>
+                <div className="p-2.5 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] text-xs font-medium text-[var(--text-primary)]">
+                  {credentials.name}
+                </div>
               </div>
 
               <div>
-                <p className="text-[10px] font-sans font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Username</p>
-                <div className="flex items-center gap-2 p-2.5 bg-[var(--bg-surface-alt)] rounded-sm border border-[var(--border)]">
-                  <code className="flex-1 text-xs font-mono text-[var(--text-primary)]">
+                <label className="text-[11px] font-mono uppercase text-[var(--text-label)] block mb-1">
+                  Username
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2.5 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] text-xs font-mono text-[var(--text-primary)]">
                     {credentials.username}
-                  </code>
-                  <button
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="xs"
                     onClick={() => handleCopy(credentials.username, 'username')}
-                    className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                    leftIcon={copied === 'username' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                   >
-                    {copied === 'username'
-                      ? <Check className="w-4 h-4 text-[var(--success)]" strokeWidth={1.5} />
-                      : <Copy className="w-4 h-4" strokeWidth={1.5} />
-                    }
-                  </button>
+                    {copied === 'username' ? 'Copied' : 'Copy'}
+                  </Button>
                 </div>
               </div>
 
               {credentials.password && (
                 <div>
-                  <p className="text-[10px] font-sans font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Password</p>
-                  <div className="flex items-center gap-2 p-2.5 bg-[var(--bg-surface-alt)] rounded-sm border border-[var(--border)]">
-                    <code className="flex-1 text-xs font-mono text-[var(--text-primary)]">
-                      {showPassword ? credentials.password : '••••••••••'}
-                    </code>
-                    <button
-                      onClick={() => setShowPassword((s) => !s)}
-                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                  <label className="text-[11px] font-mono uppercase text-[var(--text-label)] block mb-1">
+                    Password
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-2.5 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] text-xs font-mono text-[var(--text-primary)]">
+                      {showPassword ? credentials.password : '••••••••••••'}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => setShowPassword(!showPassword)}
                     >
-                      {showPassword
-                        ? <EyeOff className="w-4 h-4" strokeWidth={1.5} />
-                        : <Eye className="w-4 h-4" strokeWidth={1.5} />
-                      }
-                    </button>
-                    <button
+                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="xs"
                       onClick={() => handleCopy(credentials.password, 'password')}
-                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                      leftIcon={copied === 'password' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                     >
-                      {copied === 'password'
-                        ? <Check className="w-4 h-4 text-[var(--success)]" strokeWidth={1.5} />
-                        : <Copy className="w-4 h-4" strokeWidth={1.5} />
-                      }
-                    </button>
+                      {copied === 'password' ? 'Copied' : 'Copy'}
+                    </Button>
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          <div className="flex justify-end">
-            <Button onClick={() => setCredModalOpen(false)}>
+          <div className="flex justify-end pt-2">
+            <Button size="sm" onClick={() => setCredModalOpen(false)}>
               Done
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Delete Confirm */}
+      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        loading={deleteLoading}
         title="Delete Teacher"
-        message={`Delete "${deleteTarget?.name}"? If this teacher is assigned to subjects, those assignments will need to be updated manually.`}
-        confirmText="Delete Teacher"
-        variant="danger"
+        message={`Are you sure you want to delete ${deleteTarget?.name}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        isDestructive
+        loading={deleteLoading}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );
