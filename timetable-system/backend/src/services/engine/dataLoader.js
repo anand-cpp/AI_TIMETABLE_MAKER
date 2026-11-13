@@ -4,6 +4,7 @@ const Teacher = require('../../models/Teacher');
 const Department = require('../../models/Department');
 const CollegeSettings = require('../../models/CollegeSettings');
 const ElectiveGroup = require('../../models/ElectiveGroup');
+const MinorGroup = require('../../models/MinorGroup');
 const { DEFAULT_SETTINGS } = require('../../config/constants');
 const { getTeachingPeriods } = require('../../utils/timeHelpers');
 
