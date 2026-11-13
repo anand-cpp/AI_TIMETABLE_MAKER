@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
@@ -14,6 +14,7 @@ import OvertimeRequestModal from '../../components/timetable/OvertimeRequestModa
 import PostGenerationReportCard from '../../components/timetable/PostGenerationReportCard';
 import CustomClassSelector from '../../components/timetable/CustomClassSelector';
 import OfficialExportModal from '../../components/timetable/OfficialExportModal';
+import ConflictDiagnosticsModal from '../../components/timetable/ConflictDiagnosticsModal';
 import timetableService from '../../services/timetableService';
 import classService from '../../services/classService';
 import overrideService from '../../services/overrideService';
@@ -22,6 +23,11 @@ import {
   FileSpreadsheet,
   Eye,
   FileCheck,
+  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
+  Lightbulb,
+  ArrowRight,
 } from 'lucide-react';
 
 const TimetableBuilder = () => {
@@ -39,6 +45,14 @@ const TimetableBuilder = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('saved');
+  const [pendingRetry, setPendingRetry] = useState(null);
+  const isSavingRef = useRef(false);
+
+  // Timetable Conflict Diagnostics & Diagnostic Navigation State
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [diagnosticsModalOpen, setDiagnosticsModalOpen] = useState(false);
+  const [diagnosticsTab, setDiagnosticsTab] = useState('HARD_CONFLICTS');
+  const [diagnosticHighlight, setDiagnosticHighlight] = useState(null);
 
   // Permission Request Modal State
   const [permissionRequests, setPermissionRequests] = useState([]);
@@ -47,16 +61,16 @@ const TimetableBuilder = () => {
   const [generationReport, setGenerationReport] = useState(null);
   const [pendingOptions, setPendingOptions] = useState(null);
 
-  // Load versions list
-  const loadVersions = useCallback(async () => {
+  // Load diagnostics for a timetable version
+  const loadDiagnostics = useCallback(async (versionId) => {
+    if (!versionId) return;
     try {
-      setVersionsLoading(true);
-      const res = await timetableService.getVersions();
-      setVersions(res.data.versions || []);
-    } catch {
-      toast.error('Failed to load timetable versions');
-    } finally {
-      setVersionsLoading(false);
+      const res = await timetableService.getDiagnostics(versionId);
+      if (res.data) {
+        setDiagnostics(res.data);
+      }
+    } catch (err) {
+      console.warn('Diagnostics load notice:', err?.message);
     }
   }, []);
 
@@ -75,6 +89,8 @@ const TimetableBuilder = () => {
       if (firstClass && !selectedClassId) {
         setSelectedClassId(firstClass.classId.toString());
       }
+      // Load live conflict diagnostics
+      loadDiagnostics(id);
     } catch {
       const cached = localStorage.getItem(`timetable-cache-${id}`) || localStorage.getItem('latest-timetable-cache');
       if (cached) {
@@ -92,7 +108,27 @@ const TimetableBuilder = () => {
     } finally {
       setActiveVersionLoading(false);
     }
-  }, [selectedClassId]);
+  }, [selectedClassId, loadDiagnostics]);
+
+  // Load versions list
+  const loadVersions = useCallback(async (autoSelectLatest = true) => {
+    try {
+      setVersionsLoading(true);
+      const res = await timetableService.getVersions();
+      const vers = res.data.versions || [];
+      setVersions(vers);
+      if (autoSelectLatest && vers.length > 0) {
+        const target = vers.find(v => v.isAccepted) || vers[0];
+        if (target?._id) {
+          loadVersion(target._id);
+        }
+      }
+    } catch {
+      toast.error('Failed to load timetable versions');
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [loadVersion]);
 
   // Load classes for dropdown
   const loadClasses = useCallback(async () => {
@@ -123,7 +159,7 @@ const TimetableBuilder = () => {
       const tt = res.data.timetable;
       const reqs = res.data.permissionRequests || [];
 
-      if (reqs.length > 0 && (!customOverrides || customOverrides.subjectOverrides.length === 0)) {
+      if (reqs.length > 0 && (tt?.unplacedSubjects?.length > 0) && (!customOverrides || customOverrides.subjectOverrides.length === 0)) {
         setPermissionRequests(reqs);
         setCurrentRequestIndex(0);
         setGenerating(false);
@@ -268,10 +304,21 @@ const TimetableBuilder = () => {
     setEditModalOpen(true);
   };
 
-  // Handle Drag-and-Drop Slot Swap & Persistence
+  // Handle Drag-and-Drop Slot Swap & Instant Auto-Save to MongoDB
   const handleSlotSwap = async (sourceSlot, targetSlot, updatedSlots) => {
-    if (!activeVersion?._id || !selectedClassId) return;
+    if (!activeVersion?._id || !selectedClassId || !sourceSlot || !targetSlot) return;
 
+    // Prevent duplicate concurrent submissions while saving
+    if (isSavingRef.current) {
+      toast.error('Another timetable swap is currently saving. Please wait a moment.');
+      return;
+    }
+
+    isSavingRef.current = true;
+    setSaveStatus('saving');
+    setPendingRetry(null);
+
+    // Optimistic local UI update
     setActiveVersion((prev) => {
       if (!prev) return prev;
       const updatedClassTimetables = prev.classTimetables.map((ct) => {
@@ -280,33 +327,157 @@ const TimetableBuilder = () => {
         }
         return ct;
       });
-      const updatedObj = { ...prev, classTimetables: updatedClassTimetables };
-      try {
-        localStorage.setItem(`timetable-cache-${prev._id}`, JSON.stringify(updatedObj));
-        localStorage.setItem('latest-timetable-cache', JSON.stringify(updatedObj));
-      } catch { /* ignore storage cache errors */ }
-      return updatedObj;
+      return { ...prev, classTimetables: updatedClassTimetables };
     });
 
-    if (sourceSlot && targetSlot) {
-      try {
-        setSaveStatus('saving');
-        await timetableService.swapSlots(activeVersion._id, {
-          classId: selectedClassId,
-          slot1: { day: sourceSlot.day, period: sourceSlot.period },
-          slot2: { day: targetSlot.day, period: targetSlot.period },
-        });
-        setSaveStatus('saved');
-      } catch {
-        setSaveStatus(navigator.onLine ? 'error' : 'offline');
+    const idempotencyKey = `swap_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    try {
+      const res = await timetableService.swapSlots(activeVersion._id, {
+        classId: selectedClassId,
+        slot1: { day: sourceSlot.day, period: sourceSlot.period },
+        slot2: { day: targetSlot.day, period: targetSlot.period },
+        expectedRevision: activeVersion.revision || 1,
+        expectedUpdatedAt: activeVersion.updatedAt,
+        idempotencyKey,
+        adminOverride: true,
+      });
+
+      // Update state with confirmed persisted document from MongoDB
+      if (res.data?.timetable) {
+        setActiveVersion(res.data.timetable);
+      } else {
+        await loadVersion(activeVersion._id);
       }
+      loadDiagnostics(activeVersion._id);
+
+      setSaveStatus('saved');
+      toast.success(res.message || 'Swap auto-saved to database', { icon: '💾' });
+    } catch (err) {
+      const isConflict = err?.response?.status === 409;
+      const isNetworkOffline = !navigator.onLine || !err.response;
+
+      if (isConflict) {
+        setSaveStatus('conflict');
+        toast.error('Timetable was modified elsewhere — refreshing latest state', { icon: '⚠️' });
+        await loadVersion(activeVersion._id);
+      } else if (isNetworkOffline) {
+        setSaveStatus('offline');
+        setPendingRetry({
+          sourceSlot,
+          targetSlot,
+          idempotencyKey,
+        });
+        toast.error('Network disconnected. Swap held for retry.');
+      } else {
+        setSaveStatus('error');
+        setPendingRetry({
+          sourceSlot,
+          targetSlot,
+          idempotencyKey,
+        });
+        const errMsg = err?.response?.data?.message || err?.message || 'Swap rejected by validation gate';
+        toast.error(errMsg);
+        // Roll back optimistic UI to authoritative MongoDB state
+        await loadVersion(activeVersion._id);
+      }
+    } finally {
+      isSavingRef.current = false;
+    }
+  };
+
+  const handleRetrySave = async () => {
+    if (!pendingRetry || !activeVersion?._id || !selectedClassId) return;
+    const { sourceSlot, targetSlot, idempotencyKey } = pendingRetry;
+
+    isSavingRef.current = true;
+    setSaveStatus('saving');
+
+    try {
+      const res = await timetableService.swapSlots(activeVersion._id, {
+        classId: selectedClassId,
+        slot1: { day: sourceSlot.day, period: sourceSlot.period },
+        slot2: { day: targetSlot.day, period: targetSlot.period },
+        expectedRevision: activeVersion.revision || 1,
+        expectedUpdatedAt: activeVersion.updatedAt,
+        idempotencyKey,
+        adminOverride: true,
+      });
+
+      if (res.data?.timetable) {
+        setActiveVersion(res.data.timetable);
+      } else {
+        await loadVersion(activeVersion._id);
+      }
+      loadDiagnostics(activeVersion._id);
+
+      setSaveStatus('saved');
+      setPendingRetry(null);
+      toast.success('Swap retry succeeded and persisted', { icon: '💾' });
+    } catch (err) {
+      setSaveStatus('error');
+      const errMsg = err?.response?.data?.message || err?.message || 'Retry failed';
+      toast.error(errMsg);
+      await loadVersion(activeVersion._id);
+    } finally {
+      isSavingRef.current = false;
     }
   };
 
   const handleSlotUpdated = async () => {
     if (activeVersion?._id) {
       await loadVersion(activeVersion._id);
+      loadDiagnostics(activeVersion._id);
     }
+  };
+
+  const handleUndo = async () => {
+    if (!activeVersion?._id) return;
+    try {
+      const res = await timetableService.undo(activeVersion._id);
+      if (res.data?.timetable) {
+        setActiveVersion(res.data.timetable);
+      } else {
+        await loadVersion(activeVersion._id);
+      }
+      loadDiagnostics(activeVersion._id);
+      toast.success(res.message || 'Action undone successfully', { icon: '↺' });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Undo failed');
+    }
+  };
+
+  const handleRedo = async () => {
+    if (!activeVersion?._id) return;
+    try {
+      const res = await timetableService.redo(activeVersion._id);
+      if (res.data?.timetable) {
+        setActiveVersion(res.data.timetable);
+      } else {
+        await loadVersion(activeVersion._id);
+      }
+      loadDiagnostics(activeVersion._id);
+      toast.success(res.message || 'Action redone successfully', { icon: '↻' });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Redo failed');
+    }
+  };
+
+  const handleNavigateToCell = ({ classId, day, period, title, explanation, conflictingAssignment }) => {
+    if (classId) {
+      setSelectedClassId(classId.toString());
+    }
+    setSelectedSlot({ day, period: Number(period) });
+    setDiagnosticHighlight({
+      classId: classId ? classId.toString() : null,
+      day,
+      period: Number(period),
+      title,
+      explanation,
+      conflictingAssignment,
+    });
+    setDiagnosticsModalOpen(false);
+    toast(`Focused on ${title} at ${day} Period ${period}`, { icon: '🎯' });
   };
 
   const currentClassTimetable = activeVersion?.classTimetables?.find(
@@ -366,6 +537,10 @@ const TimetableBuilder = () => {
           report={generationReport}
           onDismiss={() => setGenerationReport(null)}
           onSendNotifications={() => toast.success('Notifications sent to affected faculty members')}
+          onOpenDiagnostics={(tab) => {
+            setDiagnosticsTab(tab);
+            setDiagnosticsModalOpen(true);
+          }}
         />
       )}
 
@@ -485,6 +660,89 @@ const TimetableBuilder = () => {
                 </div>
               </div>
 
+              {/* Interactive Validation & Diagnostics Bar */}
+              {diagnostics && (
+                <div className="flex items-center justify-between px-3.5 py-2.5 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] flex-wrap gap-2 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mr-1">
+                      Diagnostics:
+                    </span>
+
+                    {/* Hard Conflicts Badge Button */}
+                    <button
+                      onClick={() => {
+                        setDiagnosticsTab('HARD_CONFLICTS');
+                        setDiagnosticsModalOpen(true);
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xs border font-medium cursor-pointer transition-all hover:scale-[1.02] ${
+                        diagnostics.summary.hardConflictsCount === 0
+                          ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-600 border-rose-500/30 hover:bg-rose-500/20 animate-pulse'
+                      }`}
+                      title="Click to inspect exact hard constraint conflicts"
+                    >
+                      {diagnostics.summary.hardConflictsCount === 0 ? (
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                      ) : (
+                        <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+                      )}
+                      <span>
+                        Hard Conflicts:{' '}
+                        <strong>
+                          {diagnostics.summary.hardConflictsCount === 0
+                            ? '0 PASSED'
+                            : `${diagnostics.summary.hardConflictsCount} FAILED`}
+                        </strong>
+                      </span>
+                    </button>
+
+                    {/* Soft Warnings Badge Button */}
+                    <button
+                      onClick={() => {
+                        setDiagnosticsTab('SOFT_WARNINGS');
+                        setDiagnosticsModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xs border font-medium cursor-pointer transition-all hover:scale-[1.02] bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
+                      title="Click to inspect soft scheduling quality warnings"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                      <span>
+                        Soft Warnings: <strong>{diagnostics.summary.softWarningsCount}</strong>
+                      </span>
+                    </button>
+
+                    {/* Optimization Opportunities Badge Button */}
+                    <button
+                      onClick={() => {
+                        setDiagnosticsTab('OPTIMIZATION');
+                        setDiagnosticsModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xs border font-medium cursor-pointer transition-all hover:scale-[1.02] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 hover:bg-purple-500/20"
+                      title="Click to inspect scheduling optimization opportunities"
+                    >
+                      <Lightbulb className="w-3.5 h-3.5 text-purple-500" />
+                      <span>
+                        Optimization:{' '}
+                        <strong>
+                          {diagnostics.summary.optimizationsCount} Opportunities
+                        </strong>
+                      </span>
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setDiagnosticsTab('HARD_CONFLICTS');
+                      setDiagnosticsModalOpen(true);
+                    }}
+                    className="text-[11px] text-[var(--accent)] hover:underline font-medium cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Full Diagnostic Report</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
               {/* Interactive Grid */}
               {currentClassTimetable ? (
                 <TimetableGrid
@@ -495,6 +753,23 @@ const TimetableBuilder = () => {
                   selectedSlot={selectedSlot}
                   saveStatus={saveStatus}
                   onRetrySave={() => handleSlotSwap(null, null, currentClassTimetable?.slots)}
+                  onVersionUpdate={(updated) => setActiveVersion(updated)}
+                  onRefresh={() => loadVersion(activeVersion._id)}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  canUndo={Boolean(activeVersion?.undoStack?.length)}
+                  canRedo={Boolean(activeVersion?.redoStack?.length)}
+                  diagnosticHighlight={diagnosticHighlight}
+                  onClearDiagnosticHighlight={() => setDiagnosticHighlight(null)}
+                  onNavigateToClass={(cid, day, p) =>
+                    handleNavigateToCell({
+                      classId: cid,
+                      day,
+                      period: p,
+                      title: diagnosticHighlight?.title || 'Selected Cell',
+                      explanation: diagnosticHighlight?.explanation || '',
+                    })
+                  }
                   showActions
                 />
               ) : (
@@ -526,6 +801,7 @@ const TimetableBuilder = () => {
         onApplyOption={handleApplyOption}
         onSkipRequest={handleSkipRequest}
         onRejectSubject={handleRejectSubject}
+        onClose={() => setPermissionRequests([])}
       />
 
       {/* Edit Slot Modal */}
@@ -551,6 +827,15 @@ const TimetableBuilder = () => {
         message={`Delete "${deleteTarget?.label || `Version ${deleteTarget?.version}`}"? This cannot be undone.`}
         confirmText="Delete Version"
         variant="danger"
+      />
+
+      {/* Complete Conflict Diagnostics & Optimization Intelligence Modal */}
+      <ConflictDiagnosticsModal
+        isOpen={diagnosticsModalOpen}
+        onClose={() => setDiagnosticsModalOpen(false)}
+        diagnostics={diagnostics}
+        initialTab={diagnosticsTab}
+        onNavigateToCell={handleNavigateToCell}
       />
     </div>
   );

@@ -1,113 +1,147 @@
+import { useState } from 'react';
 import {
   Users,
   Calendar,
   FlaskConical,
   Layers,
-  MapPin,
   Clock,
   Brain,
   Star,
   Award,
+  HelpCircle,
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
+import ExplainableQualityModal from './ExplainableQualityModal';
 
 const scoreCategories = [
-  { key: 'teacherLoad', label: 'Teacher Load Balance', code: 'LOD', icon: Users },
-  { key: 'distribution', label: 'Subject Distribution', code: 'DST', icon: Calendar },
-  { key: 'labPlacement', label: 'Lab Placement', code: 'LAB', icon: FlaskConical },
-  { key: 'electiveSync', label: 'Elective Sync', code: 'ELC', icon: Layers, weight: 2 },
-  { key: 'travelOptimization', label: 'Travel Optimization', code: 'TRV', icon: MapPin },
-  { key: 'teacherGaps', label: 'Teacher Gaps', code: 'GAP', icon: Clock },
-  { key: 'studentStress', label: 'Student Stress', code: 'STR', icon: Brain },
+  { key: 'workloadCompleteness', label: 'Workload Completeness', code: 'WKL', max: 20 },
+  { key: 'facultyConflicts', label: 'Faculty Conflicts', code: 'FAC', max: 15 },
+  { key: 'classConflicts', label: 'Class Conflicts', code: 'CLS', max: 15 },
+  { key: 'electiveSync', label: 'Elective Sync', code: 'ELC', max: 10 },
+  { key: 'lockedSlots', label: 'Locked Slots', code: 'LCK', max: 10 },
+  { key: 'labIntegrity', label: 'Lab Integrity', code: 'LAB', max: 10 },
+  { key: 'dailyBalance', label: 'Daily Balance', code: 'BAL', max: 10 },
+  { key: 'facultyContinuity', label: 'Faculty Continuity', code: 'CON', max: 10 },
 ];
 
 const QualityScoreCard = ({ qualityScore, compact = false }) => {
+  const [showModal, setShowModal] = useState(false);
+
   if (!qualityScore) return null;
 
-  const overall = qualityScore.overall || 0;
+  const overall = qualityScore.overall ?? 0;
+  const isGated = qualityScore.isGated;
+  const breakdown = qualityScore.breakdown || [];
 
   if (compact) {
     return (
-      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border)] text-xs font-mono font-medium">
-        <Star className="w-3.5 h-3.5 text-[var(--accent)]" strokeWidth={1.5} />
-        <span>OVR {overall}/100</span>
-      </div>
+      <>
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          className="inline-flex items-center gap-2 px-3 py-1 rounded-sm bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border)] text-xs font-mono font-medium hover:opacity-90 transition-opacity cursor-pointer"
+          title="Click to view full 8-dimension quality explanation"
+        >
+          <Star className="w-3.5 h-3.5 text-[var(--accent)]" strokeWidth={1.5} />
+          <span>OVR {overall}/100</span>
+        </button>
+        <ExplainableQualityModal
+          isOpen={showModal}
+          onClose={() => setShowModal(false)}
+          qualityScore={qualityScore}
+        />
+      </>
     );
   }
 
   return (
-    <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-5 text-[var(--text-primary)]">
-      {/* Overall Score Card Header */}
-      <div className="p-4 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] mb-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5 text-[var(--text-label)] text-[11px] font-sans font-semibold uppercase tracking-widest">
-              <Award className="w-4 h-4 text-[var(--accent)]" strokeWidth={1.5} />
-              <span>Overall Quality Index</span>
+    <>
+      <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md p-5 text-[var(--text-primary)]">
+        {/* Overall Score Card Header */}
+        <div
+          onClick={() => setShowModal(true)}
+          className="p-4 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] mb-4 cursor-pointer hover:border-[var(--accent)] transition-all group"
+          title="Click to inspect transparent score breakdown"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5 text-[var(--text-label)] text-[11px] font-sans font-semibold uppercase tracking-widest">
+                <Award className="w-4 h-4 text-[var(--accent)]" strokeWidth={1.5} />
+                <span>Timetable Quality Index</span>
+              </div>
+              <div className="flex items-baseline gap-1 mt-2">
+                <span className="font-mono text-4xl font-bold text-[var(--text-primary)] leading-none">
+                  {overall}
+                </span>
+                <span className="text-sm font-sans text-[var(--text-muted)]">/100</span>
+              </div>
             </div>
-            <div className="flex items-baseline gap-1 mt-2">
-              <span className="font-mono text-4xl font-bold text-[var(--text-primary)] leading-none">{overall}</span>
-              <span className="text-sm font-sans text-[var(--text-muted)]">/100</span>
+
+            <div className={`w-12 h-12 rounded-sm border flex items-center justify-center font-mono font-bold text-lg ${
+              overall >= 90
+                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                : 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border)]'
+            }`}>
+              <Star className="w-6 h-6 fill-current" strokeWidth={1.5} />
             </div>
           </div>
-          
-          <div className="w-12 h-12 rounded-sm bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border)] flex items-center justify-center">
-            <Star className="w-6 h-6 text-[var(--accent)]" strokeWidth={1.5} />
+
+          {/* Progress Bar */}
+          <div className="mt-4">
+            <div className="h-2 bg-[var(--bg-surface)] rounded-full overflow-hidden border border-[var(--border)] p-0.5">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  overall >= 90 ? 'bg-emerald-500' : 'bg-[var(--accent)]'
+                }`}
+                style={{ width: `${overall}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-2.5 flex items-center justify-between text-[11px]">
+            <span className="text-[var(--text-secondary)]">
+              {overall >= 90 ? 'Fully Optimized & Conflict-Free' : 'Inspect deductions & issues'}
+            </span>
+            <span className="text-[var(--accent)] font-medium group-hover:underline">
+              View Breakdown →
+            </span>
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="mt-4">
-          <div className="h-2 bg-[var(--bg-surface)] rounded-full overflow-hidden border border-[var(--border)] p-0.5">
-            <div
-              className="h-full bg-[var(--accent)] rounded-full transition-all duration-500"
-              style={{ width: `${overall}%` }}
-            />
-          </div>
+        {/* 8 Transparent Dimensions Quick View */}
+        <div className="space-y-2">
+          {breakdown.length > 0 ? (
+            breakdown.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => setShowModal(true)}
+                className="flex items-center justify-between p-2 rounded-xs bg-[var(--bg-surface-alt)]/40 hover:bg-[var(--bg-surface-alt)] border border-transparent hover:border-[var(--border)] cursor-pointer text-xs transition-colors"
+              >
+                <span className="text-[var(--text-secondary)] truncate font-medium">{item.name}</span>
+                <span className="font-mono font-bold text-[var(--text-primary)] shrink-0 ml-2">
+                  <span className={item.score === item.maxScore ? 'text-emerald-500' : 'text-amber-500'}>
+                    {item.score}
+                  </span>
+                  <span className="text-[var(--text-muted)] font-normal">/{item.maxScore}</span>
+                </span>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-2 text-xs text-[var(--text-muted)]">
+              Click to view breakdown details
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Score Breakdown List */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
-          <span className="text-[11px] font-sans font-semibold uppercase tracking-widest text-[var(--text-label)]">
-            Quality Metrics Breakdown
-          </span>
-          <span className="text-[10px] font-sans text-[var(--text-muted)] uppercase tracking-wider">Score</span>
-        </div>
-
-        {scoreCategories.map((cat) => {
-          const score = qualityScore[cat.key] || 0;
-          const Icon = cat.icon;
-          return (
-            <div key={cat.key} className="flex items-center gap-3">
-              <div className="w-7 h-7 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] flex items-center justify-center shrink-0 text-[var(--text-secondary)]">
-                <Icon className="w-3.5 h-3.5" strokeWidth={1.5} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-sans text-[#EDE8D9] truncate flex items-center gap-1.5">
-                    <span className="px-1.5 py-0.5 rounded-xs bg-[#24201A] font-mono text-[10px] text-[#B89968] font-bold uppercase">{cat.code}</span>
-                    <span className="text-[#EDE8D9] font-medium">{cat.label}</span>
-                    {cat.weight && (
-                      <span className="text-[10px] font-sans text-[#8A8577]">×{cat.weight}</span>
-                    )}
-                  </span>
-                  <span className="text-xs font-mono font-bold text-[#EDE8D9] ml-2 shrink-0">
-                    {score}
-                  </span>
-                </div>
-                <div className="h-1.5 bg-[var(--bg-surface-alt)] rounded-full overflow-hidden border border-[var(--border)]">
-                  <div
-                    className="h-full bg-[var(--accent)] rounded-full transition-all duration-300"
-                    style={{ width: `${score}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+      {/* Breakdown Modal */}
+      <ExplainableQualityModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        qualityScore={qualityScore}
+      />
+    </>
   );
 };
 

@@ -65,19 +65,57 @@ const TeacherTimetableGrid = ({ slots, periods }) => {
                     />
                   );
                 }
+                const isMinor = Boolean(slot.isMinor || slot.subjectType === 'minor');
+                const isLab = Boolean(slot.subjectType === 'lab' || slot.subjectType === 'practical' || slot.isLabBlock || (slot.subjectName && slot.subjectName.toLowerCase().includes('lab')));
+                const isElective = Boolean(slot.isElective || slot.subjectType === 'elective');
+
+                const cleanMinorSubjectName = (name) => {
+                  if (!name || typeof name !== 'string') return '';
+                  return name
+                    .replace(/^\s*minor\s*[\/\-—:]\s*/i, '')
+                    .replace(/\s*[\/\-—:]\s*minor\s*$/i, '')
+                    .replace(/\s*\/\s*minor\b/i, '')
+                    .replace(/\bminor\s*\/\s*/i, '')
+                    .replace(/\s*\(\s*minor\s*\)/i, '')
+                    .trim();
+                };
+
+                const rawSubjectName = slot.minorSubjectName || slot.subjectName || '';
+                const displayName = isMinor
+                  ? (cleanMinorSubjectName(rawSubjectName) || slot.subjectCode || 'Minor')
+                  : slot.subjectName;
+
                 return (
                   <td
                     key={period}
                     className={cn(
                       'border border-[var(--border)] p-2 min-h-[56px] transition-colors',
-                      slot.subjectType === 'lab' && 'bg-[var(--accent-soft)]/60 border-l-[3px] border-l-[var(--accent)]',
-                      slot.subjectType === 'elective' && 'bg-[var(--accent-soft)] border-l-[3px] border-l-[var(--accent)]',
-                      slot.subjectType === 'theory' && 'bg-[var(--bg-surface)]',
+                      isLab && 'bg-emerald-500/10 border-l-[3px] border-l-emerald-500',
+                      isElective && 'bg-blue-500/10 border-l-[3px] border-l-blue-500',
+                      isMinor && 'bg-purple-500/10 border-l-[3px] border-l-purple-500',
+                      !isLab && !isElective && !isMinor && slot.subjectType === 'theory' && 'bg-[var(--bg-surface)]'
                     )}
                   >
                     <div>
+                      <div className="flex items-center gap-1 mb-1 flex-wrap">
+                        {isMinor && (
+                          <span className="text-[8px] font-sans font-bold px-1 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 uppercase tracking-wider">
+                            MINOR
+                          </span>
+                        )}
+                        {isLab && (
+                          <span className="text-[8px] font-sans font-bold px-1 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
+                            LAB
+                          </span>
+                        )}
+                        {isElective && (
+                          <span className="text-[8px] font-sans font-bold px-1 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 uppercase tracking-wider">
+                            ELECTIVE
+                          </span>
+                        )}
+                      </div>
                       <p className="font-sans font-semibold text-xs text-[var(--text-primary)] leading-tight">
-                        {slot.subjectName}
+                        {displayName}
                       </p>
                       {slot.subjectCode && (
                         <p className="text-xs font-mono text-[var(--text-secondary)]">

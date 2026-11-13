@@ -21,7 +21,7 @@ const OfficialExportModal = ({
   const handleExportPDF = async () => {
     try {
       setIsExporting(true);
-      toast.loading('Generating Official Ahalia PDF...', { id: 'pdf-toast' });
+      toast.loading('Generating Official Ahalia A3 Landscape PDF...', { id: 'pdf-toast' });
 
       const elementId = activeTab === 'class' ? 'official-timetable-export' : 'teacher-timetable-export';
       const element = document.getElementById(elementId);
@@ -40,18 +40,17 @@ const OfficialExportModal = ({
           : `Ahalia_Teacher_Timetable_${selectedTeacher.replace(/\s+/g, '_')}.pdf`;
 
       const opt = {
-        margin: [5, 5, 5, 5],
+        margin: [6, 6, 6, 6],
         filename,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        jsPDF: { unit: 'mm', format: 'a3', orientation: 'landscape' },
       };
 
       await html2pdf().set(opt).from(element).save();
-      toast.success('Official PDF exported successfully!', { id: 'pdf-toast' });
+      toast.success('Official Ahalia PDF exported successfully!', { id: 'pdf-toast' });
     } catch (err) {
       console.error('PDF Export error:', err);
-      // Fallback to window print
       window.print();
       toast.success('Print dialog opened', { id: 'pdf-toast' });
     } finally {
@@ -67,8 +66,8 @@ const OfficialExportModal = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="📄 Official Ahalia Format Export"
-      maxWidth="max-w-5xl"
+      title="📄 Official Ahalia Format Export (A3 Landscape)"
+      maxWidth="max-w-[96vw]"
     >
       <div className="space-y-4 font-sans text-xs">
         {/* Controls Toolbar */}
@@ -134,27 +133,29 @@ const OfficialExportModal = ({
               loading={isExporting}
               leftIcon={<Download className="w-3.5 h-3.5" />}
             >
-              Download PDF (Ahalia Format)
+              Download Official PDF (A3)
             </Button>
           </div>
         </div>
 
-        {/* Document Preview Box */}
+        {/* Document Preview Box (Horizontally and Vertically scrollable for A3) */}
         <div
           ref={containerRef}
-          className="max-h-[70vh] overflow-y-auto custom-scrollbar p-4 bg-[#525659] border border-[var(--border)] rounded-sm shadow-inner flex justify-center"
+          className="max-h-[75vh] overflow-x-auto overflow-y-auto custom-scrollbar p-6 bg-[#525659] border border-[var(--border)] rounded-sm shadow-inner flex justify-start items-start"
         >
-          {activeTab === 'class' ? (
-            <OfficialTimetableExport
-              classTimetable={classTimetable}
-              className={classTimetable?.className}
-            />
-          ) : (
-            <TeacherTimetableExport
-              teacherName={selectedTeacher}
-              timetableVersion={timetableVersion}
-            />
-          )}
+          <div className="min-w-fit mx-auto">
+            {activeTab === 'class' ? (
+              <OfficialTimetableExport
+                classTimetable={classTimetable}
+                className={classTimetable?.className}
+              />
+            ) : (
+              <TeacherTimetableExport
+                teacherName={selectedTeacher}
+                timetableVersion={timetableVersion}
+              />
+            )}
+          </div>
         </div>
       </div>
     </Modal>
