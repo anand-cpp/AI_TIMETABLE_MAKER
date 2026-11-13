@@ -2,6 +2,7 @@ const Timetable = require('../models/Timetable');
 const Class = require('../models/Class');
 const Teacher = require('../models/Teacher');
 const ElectiveGroup = require('../models/ElectiveGroup');
+const MinorGroup = require('../models/MinorGroup');
 const { sendSuccess, sendError } = require('../utils/responseHelpers');
 const orchestrator = require('../services/engine/orchestrator');
 const { computeTeacherMetrics } = require('../services/engine/teacherPersonalTimetableValidator');
@@ -830,6 +831,37 @@ const editSwapSlots = async (req, res) => {
       }
       if (s1.isBreak || s2.isBreak) {
         return sendError(res, 400, 'Cannot swap break slots');
+      }
+
+      // RULE: MANDATORY MINOR FIXED-PERIOD CONSTRAINT ENFORCEMENT
+      const isMinorSlot = (s) => Boolean(s && !s.isEmpty && !s.isBreak && (s.isMinor || s.minorGroupId || s.subjectType === 'minor'));
+      const isMinorSwap = isMinorSlot(s1) || isMinorSlot(s2);
+
+      if (isMinorSwap) {
+        const activeMinor = await MinorGroup.findOne({ isActive: true, isArchived: false });
+        if (activeMinor && activeMinor.fixedSlots && activeMinor.fixedSlots.length > 0) {
+          const fixedMinorPeriods = activeMinor.fixedSlots.map(fs => ({ day: fs.day, period: Number(fs.period) }));
+          const isFixedMinorPeriod = (day, period) =>
+            fixedMinorPeriods.some(fs => fs.day === day && fs.period === Number(period));
+
+          const fixedListStr = fixedMinorPeriods.map(f => `${f.day} P${f.period}`).join(', ');
+
+          if (isMinorSlot(s1) && !isFixedMinorPeriod(slot2.day, slot2.period) && !allowOverride) {
+            return sendError(
+              res,
+              400,
+              `Cannot swap: Minor subject '${s1.minorSubjectName || s1.subjectName || s1.subjectCode || 'Minor'}' is restricted to configured fixed minor periods (${fixedListStr}). Hard constraint: fixed period allocation.`
+            );
+          }
+
+          if (isMinorSlot(s2) && !isFixedMinorPeriod(slot1.day, slot1.period) && !allowOverride) {
+            return sendError(
+              res,
+              400,
+              `Cannot swap: Minor subject '${s2.minorSubjectName || s2.subjectName || s2.subjectCode || 'Minor'}' is restricted to configured fixed minor periods (${fixedListStr}). Hard constraint: fixed period allocation.`
+            );
+          }
+        }
       }
 
       const isElectiveSlot = (s) => Boolean(s && !s.isEmpty && !s.isBreak && (s.isElective || s.electiveGroupId || s.subjectType === 'elective'));

@@ -191,6 +191,18 @@ function validateLabBlockDestination({ labGroup, targetDay, targetStartPeriod, a
         message: `Destination block overlaps with another laboratory session (${s.subjectName || s.subjectCode}). Use lab-to-lab swap instead.`,
       };
     }
+    if (s.isMinor || s.subjectType === 'minor') {
+      return {
+        valid: false,
+        message: `Cannot swap: destination block conflict — destination contains Minor subject '${s.minorSubjectName || s.subjectName || s.subjectCode || 'Minor'}' at ${targetDay} Period ${p}. Minor subjects are restricted to fixed periods.`,
+      };
+    }
+    if (s.isElective || s.subjectType === 'elective') {
+      return {
+        valid: false,
+        message: `Cannot swap: destination block conflict — destination contains Elective subject '${s.subjectName || s.subjectCode || 'Elective'}' at ${targetDay} Period ${p}. Elective sessions must remain synchronized across paired classes.`,
+      };
+    }
     destPeriods.push(p);
     destSlots.push(s);
   }
