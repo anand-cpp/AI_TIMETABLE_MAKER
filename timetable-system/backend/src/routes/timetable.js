@@ -19,6 +19,13 @@ const {
   updateVersionLabel,
   getCrossDeptTeachers,
   saveTeacherAvailability,
+  previewRebalance,
+  applyRebalance,
+  undoLastAction,
+  redoLastAction,
+  getHistoryStatus,
+  getWorkloadReadiness,
+  getTimetableDiagnostics,
 } = require('../controllers/timetableController');
 
 const {
@@ -31,6 +38,8 @@ const { heavyLimiter } = require('../middleware/rateLimiter');
 
 // Public
 router.get('/accepted', getAccepted);
+router.get('/readiness', getWorkloadReadiness);
+router.get('/diagnostics', getTimetableDiagnostics);
 
 // Teacher + Admin
 router.get(
@@ -44,6 +53,9 @@ router.get(
 router.get('/versions', authenticate, requireAdmin, getVersions);
 router.get('/versions/:id', authenticate, requireAdmin, getVersion);
 router.get('/versions/:id/history', authenticate, requireAdmin, getEditHistory);
+router.get('/versions/:id/history-status', authenticate, requireAdmin, getHistoryStatus);
+router.get('/versions/:id/readiness', authenticate, requireAdmin, getWorkloadReadiness);
+router.get('/versions/:id/diagnostics', authenticate, requireAdmin, getTimetableDiagnostics);
 router.get('/cross-dept-teachers/:departmentId', authenticate, requireAdmin, getCrossDeptTeachers);
 router.post('/teacher-availability', authenticate, requireAdmin, saveTeacherAvailability);
 
@@ -62,5 +74,13 @@ router.patch('/versions/:id/edit/clear', authenticate, requireAdmin, editClearSl
 router.patch('/versions/:id/edit/swap', authenticate, requireAdmin, editSwapSlots);
 router.patch('/versions/:id/edit/lock', authenticate, requireAdmin, editLockSlot);
 router.patch('/versions/:id/edit/unlock', authenticate, requireAdmin, editUnlockSlot);
+
+// Admin only - undo & redo
+router.post('/versions/:id/undo', authenticate, requireAdmin, undoLastAction);
+router.post('/versions/:id/redo', authenticate, requireAdmin, redoLastAction);
+
+// Admin only - rebalance
+router.post('/versions/:id/rebalance/preview', authenticate, requireAdmin, previewRebalance);
+router.post('/versions/:id/rebalance/commit', authenticate, requireAdmin, applyRebalance);
 
 module.exports = router;
