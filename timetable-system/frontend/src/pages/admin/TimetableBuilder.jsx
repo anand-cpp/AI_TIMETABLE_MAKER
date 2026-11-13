@@ -40,6 +40,7 @@ const TimetableBuilder = () => {
   const [generating, setGenerating] = useState(false);
   const [lastGenerateResult, setLastGenerateResult] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [swapSourceSlot, setSwapSourceSlot] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [officialExportOpen, setOfficialExportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -76,17 +77,20 @@ const TimetableBuilder = () => {
 
   // Load full version data
   const loadVersion = useCallback(async (id) => {
+    if (!id) return;
     try {
       setActiveVersionLoading(true);
       setSaveStatus('saved');
       const res = await timetableService.getVersion(id);
-      setActiveVersion(res.data.timetable);
+      const tt = res.data.timetable;
+      setActiveVersion(tt);
       try {
-        localStorage.setItem(`timetable-cache-${id}`, JSON.stringify(res.data.timetable));
-        localStorage.setItem('latest-timetable-cache', JSON.stringify(res.data.timetable));
+        localStorage.setItem(`timetable-cache-${id}`, JSON.stringify(tt));
+        localStorage.setItem('latest-timetable-cache', JSON.stringify(tt));
       } catch { /* ignore storage cache errors */ }
-      const firstClass = res.data.timetable?.classTimetables?.[0];
-      if (firstClass && !selectedClassId) {
+      const firstClass = tt?.classTimetables?.[0];
+      const classExists = tt?.classTimetables?.some(ct => ct.classId?.toString() === selectedClassId);
+      if (firstClass && (!selectedClassId || !classExists)) {
         setSelectedClassId(firstClass.classId.toString());
       }
       // Load live conflict diagnostics
@@ -120,7 +124,7 @@ const TimetableBuilder = () => {
       if (autoSelectLatest && vers.length > 0) {
         const target = vers.find(v => v.isAccepted) || vers[0];
         if (target?._id) {
-          loadVersion(target._id);
+          await loadVersion(target._id);
         }
       }
     } catch {
@@ -201,10 +205,18 @@ const TimetableBuilder = () => {
       } catch { /* ignore storage cache errors */ }
 
       setSaveStatus('saved');
-      await loadVersions();
-      if (tt?._id) {
-        await loadVersion(tt._id);
+      setActiveVersion(tt);
+      const classExists = tt?.classTimetables?.some(ct => ct.classId?.toString() === selectedClassId);
+      if (!selectedClassId || !classExists) {
+        const firstClass = tt?.classTimetables?.[0];
+        if (firstClass) {
+          setSelectedClassId(firstClass.classId.toString());
+        }
       }
+      if (tt?._id) {
+        loadDiagnostics(tt._id);
+      }
+      await loadVersions(false);
     } catch (err) {
       setSaveStatus('error');
       const msg = err.response?.data?.message || 'Generation failed';
@@ -482,7 +494,19 @@ const TimetableBuilder = () => {
 
   const currentClassTimetable = activeVersion?.classTimetables?.find(
     (ct) => ct.classId?.toString() === selectedClassId
-  );
+  ) || activeVersion?.classTimetables?.[0] || null;
+
+  // Keep selectedClassId synchronized if activeVersion updates or class is missing
+  useEffect(() => {
+    if (activeVersion?.classTimetables?.length > 0) {
+      const match = activeVersion.classTimetables.some(
+        (ct) => ct.classId?.toString() === selectedClassId
+      );
+      if (!match) {
+        setSelectedClassId(activeVersion.classTimetables[0].classId?.toString() || '');
+      }
+    }
+  }, [activeVersion, selectedClassId]);
 
   const classOptions = activeVersion?.classTimetables?.map((ct) => ({
     value: ct.classId?.toString(),
@@ -751,6 +775,8 @@ const TimetableBuilder = () => {
                   onSlotClick={handleSlotClick}
                   onSlotSwap={handleSlotSwap}
                   selectedSlot={selectedSlot}
+                  swapSourceSlot={swapSourceSlot}
+                  onSwapSourceChange={setSwapSourceSlot}
                   saveStatus={saveStatus}
                   onRetrySave={() => handleSlotSwap(null, null, currentClassTimetable?.slots)}
                   onVersionUpdate={(updated) => setActiveVersion(updated)}
@@ -815,6 +841,10 @@ const TimetableBuilder = () => {
         timetableId={activeVersion?._id}
         classId={selectedClassId}
         onUpdate={handleSlotUpdated}
+        onStartSwap={(slot) => {
+          setSwapSourceSlot(slot);
+          toast(`Selected ${slot.day} P${slot.period} (${slot.subjectName || slot.subjectCode}). Click any green slot to swap.`, { icon: '🎯' });
+        }}
       />
 
       {/* Delete Version Confirm */}
