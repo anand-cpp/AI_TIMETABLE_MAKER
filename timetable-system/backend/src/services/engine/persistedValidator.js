@@ -1,5 +1,7 @@
 const { loadData } = require('./dataLoader');
 const { validateOutput } = require('./constraintValidator');
+const { validateGlobalTimetable } = require('./globalTimetableValidator');
+const { validateDailySubjectLimit } = require('./dailySubjectLimitValidator');
 
 /**
  * Rebuild an engine-style grid from a persisted timetable document, then run the
@@ -35,10 +37,20 @@ const gridFromTimetable = (timetable) => {
         batch2: slot.batch2 || { teacherId: null, teacherName: '', roomName: '' },
         isElective: !!slot.isElective,
         electiveGroupId: slot.electiveGroupId || '',
+        isMinor: !!slot.isMinor || slot.subjectType === 'minor',
+        minorGroupId: slot.minorGroupId || '',
+        minorSubjectId: slot.minorSubjectId || null,
+        minorSubjectName: slot.minorSubjectName || '',
+        minorSubjectCode: slot.minorSubjectCode || '',
         isAutoFill: !!slot.isAutoFill,
         autoFillType: slot.autoFillType || '',
         isEmpty: slot.isEmpty !== undefined ? !!slot.isEmpty : !slot.subjectId,
         isOverride: !!slot.isOverride,
+        isPendingFaculty: !!slot.isPendingFaculty,
+        sharedSessionId: slot.sharedSessionId || null,
+        isSharedProject: !!slot.isSharedProject,
+        day: slot.day,
+        period: slot.period,
       };
     }
   }
@@ -89,20 +101,42 @@ const validatePersistedTimetable = async (timetable) => {
 
   const valData = { ...data, classes: presentClasses };
   const result = validateOutput(grid, valData, []);
+  const globalVal = validateGlobalTimetable(grid, valData);
+  const globalHard = (globalVal.violations || []).filter(v => v.severity === 'hard');
+  const dailyLimitResult = validateDailySubjectLimit(timetable);
+  const dailyViolations = (dailyLimitResult.violations || []).map(v => ({
+    type: 'DAILY_SUBJECT_UNIQUENESS_VIOLATION',
+    code: 'DAILY_SUBJECT_UNIQUENESS_VIOLATION',
+    severity: 'hard',
+    message: v.message,
+    className: v.className,
+    day: v.day,
+    subjectCode: v.subjectCode,
+    periods: v.periods
+  }));
 
-  const hardViolations = [...result.hardViolations, ...missingClassViolations];
-  const valid = result.valid && missingClassViolations.length === 0;
+  const hardViolations = [
+    ...result.hardViolations,
+    ...missingClassViolations,
+    ...globalHard.map(v => ({ ...v, type: v.type || v.code })),
+    ...dailyViolations,
+  ];
+  const valid = result.valid && missingClassViolations.length === 0 && globalHard.length === 0 && dailyViolations.length === 0;
 
   return {
     ...result,
     valid,
     hardViolations,
-    hardViolationsCount: result.hardViolationsCount + missingClassViolations.length,
+    hardViolationsCount: hardViolations.length,
     checks: {
       ...result.checks,
+      zero_daily_subject_duplicates: hardViolations.filter(v => v.type === 'DAILY_SUBJECT_UNIQUENESS_VIOLATION').length === 0,
+      elective_groups_synchronized: hardViolations.filter(v => v.type === 'ELECTIVE_DESYNCHRONIZATION').length === 0,
       classes_present_in_db: missingClassViolations.length === 0,
     },
+    dailyLimitResult,
     grid,
+    valData,
   };
 };
 
@@ -114,4 +148,4 @@ const summarizeViolations = (violations, limit = 12) => {
   return list;
 };
 
-module.exports = { validatePersistedTimetable, gridFromTimetable, summarizeViolations };
+module.exports = { validatePersistedTimetable, gridFromTimetable, summarizeViolations, validateDailySubjectLimit };
