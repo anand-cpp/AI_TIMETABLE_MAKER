@@ -5,6 +5,8 @@ const SlotCell = ({
   slot,
   onClick,
   isSelected,
+  isSwapSource,
+  isDiagnosticFocus,
   showActions,
   dragRef,
   dropRef,
@@ -13,6 +15,9 @@ const SlotCell = ({
   isDragging,
   isOver,
   readonly,
+  isLabGroupActive,
+  onMouseEnter,
+  onMouseLeave,
 }) => {
   const setRef = (node) => {
     if (dragRef) dragRef(node);
@@ -54,9 +59,11 @@ const SlotCell = ({
         {...attributes}
         {...listeners}
         className={cn(
-          'timetable-cell empty border border-[var(--border)] p-1.5 min-h-[60px] cursor-pointer relative select-none transition-all duration-150',
-          isOver && 'ring-2 ring-[var(--accent)] bg-[var(--accent-soft)] border-2 border-dashed border-[var(--accent)]',
-          isSelected && 'ring-2 ring-[var(--accent)] bg-[var(--accent-soft)]'
+          'timetable-cell empty border border-[var(--border)] p-1.5 min-h-[60px] cursor-pointer relative select-none transition-colors duration-150',
+          isDiagnosticFocus && 'ring-4 ring-rose-500 bg-rose-500/20 shadow-xl animate-pulse z-30',
+          isOver && 'ring-2 ring-inset ring-[var(--accent)] bg-[var(--accent-soft)] border-2 border-dashed border-[var(--accent)] z-20',
+          isSelected && !isSwapSource && !isDiagnosticFocus && 'ring-2 ring-inset ring-[var(--accent)] bg-[var(--accent-soft)]',
+          isSwapSource && 'ring-2 ring-inset ring-amber-500 bg-amber-500/20 shadow-md z-20 animate-pulse'
         )}
         onClick={() => onClick?.(slot)}
       >
@@ -64,6 +71,10 @@ const SlotCell = ({
           {isOver ? (
             <span className="text-[10px] font-sans font-bold text-[var(--accent)] uppercase tracking-wider bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-[var(--accent)] shadow-sm">
               Move Here
+            </span>
+          ) : isSwapSource ? (
+            <span className="text-[10px] font-sans font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-amber-500 shadow-sm">
+              Selected
             </span>
           ) : showActions ? (
             <span className="text-xs text-[var(--text-muted)] group-hover:text-[var(--accent)]">
@@ -78,24 +89,50 @@ const SlotCell = ({
   }
 
   const isAutoFill = slot.isAutoFill || slot.subjectType === 'autofill';
+  const isMinor = Boolean(slot.isMinor || slot.subjectType === 'minor');
+  const isLab = Boolean(slot.subjectType === 'lab' || slot.subjectType === 'practical' || slot.isLabBlock || (slot.subjectName && slot.subjectName.toLowerCase().includes('lab')));
+  const isElective = Boolean(slot.isElective || slot.subjectType === 'elective');
 
+  // CRITICAL FIX: Removed scale-[1.02] and scale-[0.98] to prevent table layout reflow loops
+  // and jitter/shaking during drag-and-drop hovering. Used ring-inset so bounding box never expands.
   const cellClass = cn(
-    'timetable-cell border p-2 min-h-[60px] relative group transition-all duration-150 select-none cursor-grab active:cursor-grabbing',
+    'timetable-cell border p-2 min-h-[60px] relative group transition-colors duration-150 select-none cursor-grab active:cursor-grabbing',
     isAutoFill ? 'bg-[var(--bg-surface-alt)] border-dashed border-[var(--border)]' : 'border-[var(--border)]',
-    slot.subjectType === 'lab' && 'lab bg-[var(--accent-soft)]/40',
-    slot.subjectType === 'theory' && 'theory bg-[var(--bg-surface)]',
-    slot.subjectType === 'elective' && 'elective bg-[var(--accent-soft)]/20',
-    slot.isLocked && 'locked bg-[var(--warning)]/10 ring-1 ring-[var(--warning)]',
-    slot.isOverride && 'ring-1 ring-amber-500/50 bg-amber-500/5',
-    isSelected && 'ring-2 ring-[var(--accent)]',
-    isDragging && 'opacity-40 scale-[0.98] border-2 border-dashed border-[var(--accent)]',
-    isOver && 'ring-2 ring-[var(--accent)] bg-[var(--accent-soft)] border-2 border-dashed border-[var(--accent)] scale-[1.02] z-20'
+    isLab && 'lab bg-emerald-500/10 border-emerald-500/30',
+    isElective && 'elective bg-blue-500/10 border-blue-500/30',
+    isMinor && 'minor bg-purple-500/10 border-purple-500/30 ring-1 ring-inset ring-purple-500/20',
+    !isLab && !isElective && !isMinor && slot.subjectType === 'theory' && 'theory bg-[var(--bg-surface)]',
+    slot.isLocked && 'locked bg-[var(--warning)]/10 ring-1 ring-inset ring-[var(--warning)]',
+    slot.isOverride && 'ring-1 ring-inset ring-amber-500/50 bg-amber-500/5',
+    isDiagnosticFocus && 'ring-4 ring-rose-500 shadow-xl animate-pulse z-30 bg-rose-500/10',
+    isLabGroupActive && !isDiagnosticFocus && 'ring-2 ring-inset ring-indigo-500 bg-indigo-500/15 shadow-sm z-10',
+    isSwapSource && !isDiagnosticFocus && 'ring-2 ring-inset ring-amber-500 bg-amber-500/20 shadow-md z-20 animate-pulse',
+    isSelected && !isSwapSource && !isDiagnosticFocus && 'ring-2 ring-inset ring-[var(--accent)]',
+    isDragging && 'opacity-40 border-2 border-dashed border-[var(--accent)] bg-[var(--accent-soft)]/20',
+    isOver && 'ring-2 ring-inset ring-[var(--accent)] bg-[var(--accent-soft)] border-2 border-dashed border-[var(--accent)] z-20'
   );
 
   const TypeIcon =
-    slot.subjectType === 'lab' ? FlaskConical :
-    slot.subjectType === 'elective' ? Layers :
+    isLab ? FlaskConical :
+    isElective ? Layers :
     isAutoFill ? Sparkles : BookOpen;
+
+  // Clean redundant "/minor" prefixes or suffixes when the MINOR badge is displayed
+  const cleanMinorSubjectName = (name) => {
+    if (!name || typeof name !== 'string') return '';
+    return name
+      .replace(/^\s*minor\s*[\/\-—:]\s*/i, '')
+      .replace(/\s*[\/\-—:]\s*minor\s*$/i, '')
+      .replace(/\s*\/\s*minor\b/i, '')
+      .replace(/\bminor\s*\/\s*/i, '')
+      .replace(/\s*\(\s*minor\s*\)/i, '')
+      .trim();
+  };
+
+  const rawSubjectName = slot.minorSubjectName || slot.subjectName || '';
+  const displaySubjectName = isMinor
+    ? (cleanMinorSubjectName(rawSubjectName) || slot.subjectCode || 'Minor')
+    : slot.subjectName;
 
   return (
     <td
@@ -104,6 +141,8 @@ const SlotCell = ({
       {...(readonly || slot.isLocked ? {} : listeners)}
       className={cellClass}
       onClick={() => onClick?.(slot)}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       {/* ⚡ Override Marker Badge */}
       {slot.isOverride && (
@@ -122,6 +161,7 @@ const SlotCell = ({
         </span>
       )}
 
+      {/* Drag Hover Indication (Zero geometric expansion) */}
       {isOver && (
         <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center bg-[var(--accent)]/10 backdrop-blur-[1px] rounded-xs border-2 border-dashed border-[var(--accent)]">
           <span className="px-2 py-0.5 rounded bg-[var(--bg-surface)] text-[var(--accent)] font-sans font-bold text-[10px] uppercase shadow-md tracking-wider">
@@ -130,56 +170,58 @@ const SlotCell = ({
         </div>
       )}
 
+      {/* Click-to-Swap Source Selection Indication */}
+      {isSwapSource && (
+        <div className="absolute top-1 left-1 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500 text-white text-[9px] font-sans font-bold uppercase shadow-sm">
+          <span>Source</span>
+        </div>
+      )}
+
       <div className="flex flex-col h-full min-h-[56px] justify-between pointer-events-none">
         <div className="flex-1">
-          {/* Subject name */}
-          <p className={cn(
-            "text-xs font-serif text-[var(--text-primary)] leading-tight break-words pr-3",
-            isAutoFill ? "italic text-[var(--text-secondary)] font-normal" : "font-normal"
-          )}>
-            {slot.icon && <span className="mr-1.5 not-italic">{slot.icon}</span>}
-            {slot.subjectName}
-          </p>
-
-          {/* Subject code */}
-          {slot.subjectCode && (
-            <p className="text-[10px] font-mono font-semibold text-[#B8A574] mt-0.5">
+          <div className="flex items-start justify-between gap-1 mb-1">
+            <span className="font-mono text-[10px] text-[var(--accent)] font-semibold tracking-tight truncate">
               {slot.subjectCode}
-            </p>
-          )}
-
-          {/* Teacher names */}
-          {slot.teacherNames?.length > 0 && (
-            <p className="text-[11px] font-sans text-[var(--text-secondary)] mt-0.5 truncate">
-              {slot.teacherNames.join(', ')}
-            </p>
-          )}
-
-          {/* Batch split */}
-          {slot.isBatchSplit && (
-            <div className="mt-0.5 space-y-0.5 text-[10px] font-sans font-medium">
-              {slot.batch1?.teacherName && (
-                <p className="text-[var(--accent)] truncate">B1: {slot.batch1.teacherName}</p>
+            </span>
+            <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+              {isMinor && (
+                <span className="text-[8px] font-sans font-bold px-1 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 uppercase tracking-wider">
+                  MINOR
+                </span>
               )}
-              {slot.batch2?.teacherName && (
-                <p className="text-[var(--text-secondary)] truncate">B2: {slot.batch2.teacherName}</p>
+              {isLab && (
+                <span className="text-[8px] font-sans font-bold px-1 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
+                  LAB
+                </span>
+              )}
+              {isElective && (
+                <span className="text-[8px] font-sans font-bold px-1 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 uppercase tracking-wider">
+                  ELECTIVE
+                </span>
+              )}
+              {slot.isLocked && (
+                <Lock className="w-3 h-3 text-[var(--warning)]" strokeWidth={1.5} />
+              )}
+              {slot.subjectType && slot.subjectType !== 'empty' && (
+                <TypeIcon className="w-3 h-3 text-[var(--text-muted)]" strokeWidth={1.5} />
               )}
             </div>
-          )}
-
-          {/* Room */}
-          {slot.roomName && (
-            <p className="text-[10px] font-sans text-[var(--text-muted)] truncate mt-0.5">
-              📍 {slot.roomName}
-            </p>
-          )}
+          </div>
+          <p className="font-serif font-normal text-xs text-[var(--text-primary)] leading-tight line-clamp-2">
+            {displaySubjectName}
+          </p>
         </div>
 
-        {/* Bottom icons */}
-        <div className="flex items-center justify-between mt-1">
-          <TypeIcon className="w-3 h-3 text-[var(--accent)]" strokeWidth={1.5} />
-          {slot.isLocked && (
-            <Lock className="w-3 h-3 text-[var(--warning)]" strokeWidth={1.5} />
+        <div className="mt-1 pt-1 border-t border-[var(--border)]/50 flex items-center justify-between text-[10px] text-[var(--text-secondary)] font-sans">
+          <span className="truncate max-w-[90px]">
+            {slot.teacherNames && slot.teacherNames.length > 0
+              ? slot.teacherNames.join(', ')
+              : '—'}
+          </span>
+          {slot.roomName && (
+            <span className="text-[var(--text-muted)] font-mono text-[9px] shrink-0">
+              {slot.roomName}
+            </span>
           )}
         </div>
       </div>
