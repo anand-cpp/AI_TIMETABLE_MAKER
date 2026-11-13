@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Zap,
   Layers,
+  BookMarked,
 } from 'lucide-react';
 
 const adminNavItems = [
@@ -35,6 +36,7 @@ const adminNavItems = [
       { label: 'Teachers', to: '/admin/teachers', icon: Users },
       { label: 'Subjects', to: '/admin/subjects', icon: BookOpen },
       { label: 'Elective Groups', to: '/admin/elective-groups', icon: Layers },
+      { label: 'Minor Subjects', to: '/admin/minor-subjects', icon: BookMarked },
     ],
   },
   {

@@ -32,6 +32,7 @@ import EmailManager from './pages/admin/EmailManager';
 import Upload from './pages/admin/Upload';
 import OverrideLog from './pages/admin/OverrideLog';
 import ElectiveGroups from './pages/admin/ElectiveGroups';
+import MinorSubjects from './pages/admin/MinorSubjects';
 import FacultyProfile from './pages/admin/FacultyProfile';
 
 // Teacher Pages
@@ -42,7 +43,7 @@ import MySuggestions from './pages/teacher/MySuggestions';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
 function App() {
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(() => { try { return sessionStorage.getItem('timetable_splash_dismissed') !== 'true'; } catch { return true; } });
 
   return (
     <ThemeProvider>
@@ -75,6 +76,7 @@ function App() {
               <Route path="teachers/:id/profile" element={<FacultyProfile />} />
               <Route path="subjects" element={<Subjects />} />
               <Route path="elective-groups" element={<ElectiveGroups />} />
+              <Route path="minor-subjects" element={<MinorSubjects />} />
               <Route path="timetable" element={<TimetableBuilder />} />
               <Route path="department-timetable" element={<DepartmentTimetable />} />
               <Route path="year-timetable" element={<YearTimetable />} />

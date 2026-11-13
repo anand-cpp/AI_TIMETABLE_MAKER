@@ -106,6 +106,46 @@ const timetableService = {
     return res.data;
   },
 
+  previewRebalance: async (id, data) => {
+    const res = await api.post(`/timetable/versions/${id}/rebalance/preview`, data);
+    return res.data;
+  },
+
+  applyRebalance: async (id, data) => {
+    const res = await api.post(`/timetable/versions/${id}/rebalance/commit`, data);
+    return res.data;
+  },
+
+  // Undo & Redo (Phase 6)
+  undo: async (id) => {
+    const res = await api.post(`/timetable/versions/${id}/undo`);
+    return res.data;
+  },
+
+  redo: async (id) => {
+    const res = await api.post(`/timetable/versions/${id}/redo`);
+    return res.data;
+  },
+
+  getHistoryStatus: async (id) => {
+    const res = await api.get(`/timetable/versions/${id}/history-status`);
+    return res.data;
+  },
+
+  // Workload Readiness & Status Model (Phase 7)
+  getWorkloadReadiness: async (id) => {
+    const url = id ? `/timetable/versions/${id}/readiness` : '/timetable/readiness';
+    const res = await api.get(url);
+    return res.data;
+  },
+
+  // Timetable Conflict Diagnostics & Optimization Opportunities
+  getDiagnostics: async (id) => {
+    const url = id ? `/timetable/versions/${id}/diagnostics` : '/timetable/diagnostics';
+    const res = await api.get(url);
+    return res.data;
+  },
+
   // Downloads — fetched with the auth token then saved as a blob so protected
   // endpoints work without leaking credentials in the URL.
   downloadClassPdf: (classId, versionId) =>

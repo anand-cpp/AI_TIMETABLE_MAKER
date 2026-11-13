@@ -16,6 +16,12 @@ const teacherService = {
     return res.data;
   },
 
+
+  getWorkloadOverview: async () => {
+    const res = await api.get('/teachers/workload-overview');
+    return res.data;
+  },
+
   getFacultyProfile: async (id) => {
     const res = await api.get(`/teachers/${id}/profile`);
     return res.data;
