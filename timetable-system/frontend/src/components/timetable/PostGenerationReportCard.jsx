@@ -1,6 +1,6 @@
 import { CheckCircle2, Clock, Bell, X, ShieldCheck, ShieldAlert, Zap, Sparkles } from 'lucide-react';
 
-const PostGenerationReportCard = ({ report, onDismiss, onSendNotifications }) => {
+const PostGenerationReportCard = ({ report, onDismiss, onSendNotifications, onOpenDiagnostics }) => {
   if (!report) return null;
 
   const {
@@ -66,8 +66,19 @@ const PostGenerationReportCard = ({ report, onDismiss, onSendNotifications }) =>
           </div>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-surface-alt border border-theme/50">
-          <div className="text-[11px] font-medium text-muted uppercase">Hard Conflicts</div>
+        <div
+          onClick={() => onOpenDiagnostics?.('HARD_CONFLICTS')}
+          className="p-3.5 rounded-xl bg-surface-alt border border-theme/50 hover:border-accent hover:shadow-md transition-all cursor-pointer group"
+          title="Click to inspect all hard conflict violations and root causes"
+        >
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-medium text-muted uppercase group-hover:text-accent transition-colors">
+              Hard Conflicts
+            </div>
+            <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+              Inspect →
+            </span>
+          </div>
           <div
             className={`text-xl font-extrabold mt-1 flex items-center gap-1.5 ${
               violationsCount === 0 ? 'text-emerald-500' : 'text-red-500'
@@ -86,16 +97,40 @@ const PostGenerationReportCard = ({ report, onDismiss, onSendNotifications }) =>
           </div>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-surface-alt border border-theme/50">
-          <div className="text-[11px] font-medium text-muted uppercase">Soft Warnings</div>
+        <div
+          onClick={() => onOpenDiagnostics?.('SOFT_WARNINGS')}
+          className="p-3.5 rounded-xl bg-surface-alt border border-theme/50 hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group"
+          title="Click to inspect scheduling quality and soft warnings"
+        >
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-medium text-muted uppercase group-hover:text-amber-500 transition-colors">
+              Soft Warnings
+            </div>
+            <span className="text-[10px] text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+              Inspect →
+            </span>
+          </div>
           <div className="text-xl font-extrabold text-amber-500 mt-1 flex items-center gap-1.5">
             <span>{softWarnings}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 font-semibold">OPTIMIZATION</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 font-semibold">
+              OPTIMIZATION
+            </span>
           </div>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-surface-alt border border-theme/50">
-          <div className="text-[11px] font-medium text-muted uppercase">Generation Time</div>
+        <div
+          onClick={() => onOpenDiagnostics?.('OPTIMIZATION')}
+          className="p-3.5 rounded-xl bg-surface-alt border border-theme/50 hover:border-purple-500 hover:shadow-md transition-all cursor-pointer group"
+          title="Click to inspect optimization opportunities"
+        >
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-medium text-muted uppercase group-hover:text-purple-500 transition-colors">
+              Generation Time
+            </div>
+            <span className="text-[10px] text-purple-500 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+              Insights →
+            </span>
+          </div>
           <div className="text-xl font-extrabold text-main mt-1 flex items-center gap-1.5 font-mono">
             <span>{generationTime}</span>
             <Clock className="w-4 h-4 text-muted" />
@@ -162,7 +197,7 @@ const PostGenerationReportCard = ({ report, onDismiss, onSendNotifications }) =>
           </button>
           <button
             onClick={onSendNotifications}
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-accent text-white hover:bg-accent-hover transition-all duration-200 shadow flex items-center gap-1.5 cursor-pointer"
+            className="px-4 py-2 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
           >
             <Bell className="w-3.5 h-3.5" />
             <span>Send Notifications</span>
