@@ -72,6 +72,20 @@ const loadData = async (options = {}) => {
     .populate('options.teacherIds', 'name username unavailability morningLabPreference maxPeriodsPerDay maxPeriodsPerWeek departmentId')
     .lean();
 
+
+  // ── Load minor groups for the filtered classes ──────────────────────────
+  let minorGroups = await MinorGroup.find({
+    departmentId: { $in: departmentIds },
+    semester: { $in: semesters },
+    isActive: true,
+  })
+    .populate('classConfigs.classId', 'name semester section departmentId')
+    .populate('classConfigs.subMinors.subjectId', 'name code type weeklyHours')
+    .populate('classConfigs.subMinors.teacherIds', 'name username unavailability morningLabPreference maxPeriodsPerDay maxPeriodsPerWeek departmentId')
+    .populate('options.subjectId', 'name code type weeklyHours')
+    .populate('options.teacherIds', 'name username unavailability morningLabPreference maxPeriodsPerDay maxPeriodsPerWeek departmentId')
+    .lean();
+
   if (!subjects || subjects.length === 0) {
     throw new Error('No subjects found for the selected classes.');
   }
@@ -184,6 +198,7 @@ const loadData = async (options = {}) => {
     timeline: monThuTimeline,
     fridayTimeline,
     electiveGroups,
+    minorGroups,
   };
 };
 
