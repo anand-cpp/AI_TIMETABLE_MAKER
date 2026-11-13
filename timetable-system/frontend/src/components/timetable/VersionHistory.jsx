@@ -67,13 +67,13 @@ const VersionHistory = ({
       {versions.map((version) => {
         const isActive = version._id === activeVersionId;
         const isAccepted = version.isAccepted;
-        const score = version.qualityScore?.overall || 85;
+        const score = version.qualityScore?.overall ?? 85;
         const hasUnplaced = (version.unplacedSubjects?.length || 0) > 0;
-        const hardViolationsCount = version.generationStats?.hardViolations || 0;
-        const softViolationsCount = version.generationStats?.softViolations || 34;
+        const hardViolationsCount = version.generationStats?.hardViolations ?? (version.validationChecks?.hardViolationsCount || 0);
+        const softViolationsCount = version.generationStats?.softViolations ?? (version.warnings?.length || 0);
 
         // Smart Publish Logic: Publishable if 0 unplaced subjects and 0 hard conflicts
-        const isCriticalError = hasUnplaced || hardViolationsCount > 0 || score < 50;
+        const isCriticalError = hasUnplaced || hardViolationsCount > 0 || score < 60;
         const isPublishable = !isCriticalError;
 
         return (
@@ -101,7 +101,7 @@ const VersionHistory = ({
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-500 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> ✗ CRITICAL ISSUES
+                      <AlertTriangle className="w-3 h-3" /> ✗ {hardViolationsCount > 0 ? `${hardViolationsCount} CONFLICTS` : 'CRITICAL ISSUES'}
                     </span>
                   )}
 
@@ -115,13 +115,24 @@ const VersionHistory = ({
                 </p>
 
                 <div className="mt-1.5 space-y-0.5 text-[11px] font-sans">
-                  <p className="text-emerald-500 font-medium">✓ 0 hard conflicts · 100% placed</p>
-                  <p className="text-amber-500 font-medium">⚠ {softViolationsCount} soft warnings (optimization)</p>
+                  {hardViolationsCount > 0 ? (
+                    <p className="text-rose-500 font-medium">✗ {hardViolationsCount} hard conflict(s)</p>
+                  ) : (
+                    <p className="text-emerald-500 font-medium">✓ 0 hard conflicts · 100% placed</p>
+                  )}
+                  {softViolationsCount > 0 ? (
+                    <p className="text-amber-500 font-medium">⚠ {softViolationsCount} soft warnings (optimization)</p>
+                  ) : (
+                    <p className="text-[var(--text-muted)] font-medium">✓ 0 soft warnings</p>
+                  )}
                 </div>
               </div>
 
               <div className="flex flex-col items-end gap-1 shrink-0">
-                <div className="text-lg font-mono font-bold text-[var(--text-primary)]">
+                <div className={cn(
+                  "text-lg font-mono font-bold",
+                  score >= 80 ? "text-emerald-600" : score >= 60 ? "text-amber-600" : "text-rose-600"
+                )}>
                   {score}
                   <span className="text-xs font-sans font-normal text-[var(--text-muted)]">/100</span>
                 </div>

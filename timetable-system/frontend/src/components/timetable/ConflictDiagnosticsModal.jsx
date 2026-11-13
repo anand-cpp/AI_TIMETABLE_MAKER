@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
@@ -41,6 +41,12 @@ const ConflictDiagnosticsModal = ({
   const [activeTab, setActiveTab] = useState(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDayFilter, setSelectedDayFilter] = useState('ALL');
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
 
   const summary = diagnostics?.summary || {};
   const hardConflicts = diagnostics?.hardConflicts || [];
@@ -192,6 +198,33 @@ const ConflictDiagnosticsModal = ({
               {optCount}
             </span>
           </button>
+        </div>
+
+        {/* Category Context & About Banner */}
+        <div className={`p-3 rounded-md border text-xs leading-relaxed ${
+          activeTab === 'HARD_CONFLICTS'
+            ? 'bg-rose-500/5 border-rose-500/20 text-rose-900 dark:text-rose-200'
+            : activeTab === 'SOFT_WARNINGS'
+            ? 'bg-amber-500/5 border-amber-500/20 text-amber-900 dark:text-amber-200'
+            : 'bg-purple-500/5 border-purple-500/20 text-purple-900 dark:text-purple-200'
+        }`}>
+          <div className="flex items-center gap-1.5 font-bold mb-1">
+            <Info className="w-4 h-4 shrink-0" />
+            <span>
+              {activeTab === 'HARD_CONFLICTS'
+                ? 'About Hard Conflicts (Critical Infeasibilities)'
+                : activeTab === 'SOFT_WARNINGS'
+                ? 'About Soft Warnings (Teaching Quality Alerts)'
+                : 'About Optimization Opportunities (Schedule Enhancements)'}
+            </span>
+          </div>
+          <p className="text-[11px] opacity-90">
+            {activeTab === 'HARD_CONFLICTS'
+              ? (summary.aboutHardConflicts || 'Hard conflicts represent physical or statutory impossibilities (e.g. two classes assigned to the same laboratory room at the same hour, or faculty double-booked simultaneously). These violate basic institutional feasibility and MUST be resolved before publishing.')
+              : activeTab === 'SOFT_WARNINGS'
+              ? (summary.aboutSoftWarnings || 'Soft warnings identify non-blocking pedagogical quality issues, such as instructors assigned to 4 or more back-to-back teaching periods without an intervening rest break. Addressing these ensures faculty fatigue is minimized.')
+              : (summary.aboutOptimization || 'Optimization opportunities are non-critical schedule improvements, such as eliminating awkward 1-period idle gaps before afternoon classes or providing restorative lunch buffers.')}
+          </p>
         </div>
 
         {/* Filter & Search Bar */}

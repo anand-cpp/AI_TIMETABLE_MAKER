@@ -28,6 +28,9 @@ import {
   AlertTriangle,
   Lightbulb,
   ArrowRight,
+  Info,
+  ExternalLink,
+  X,
 } from 'lucide-react';
 
 const TimetableBuilder = () => {
@@ -53,6 +56,7 @@ const TimetableBuilder = () => {
   const [diagnostics, setDiagnostics] = useState(null);
   const [diagnosticsModalOpen, setDiagnosticsModalOpen] = useState(false);
   const [diagnosticsTab, setDiagnosticsTab] = useState('HARD_CONFLICTS');
+  const [inlineIssuesCategory, setInlineIssuesCategory] = useState(null);
   const [diagnosticHighlight, setDiagnosticHighlight] = useState(null);
 
   // Permission Request Modal State
@@ -688,86 +692,342 @@ const TimetableBuilder = () => {
                 </div>
               </div>
 
-              {/* Interactive Validation & Diagnostics Bar */}
+              {/* Interactive Validation & Diagnostics Bar with Sub-Summaries */}
               {diagnostics && (
-                <div className="flex items-center justify-between px-3.5 py-2.5 rounded-sm bg-[var(--bg-surface-alt)] border border-[var(--border)] flex-wrap gap-2 text-xs">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mr-1">
-                      Diagnostics:
-                    </span>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 rounded-md bg-[var(--bg-surface-alt)] border border-[var(--border)] flex-wrap gap-2 text-xs">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mr-1">
+                        Diagnostics:
+                      </span>
 
-                    {/* Hard Conflicts Badge Button */}
-                    <button
-                      onClick={() => {
-                        setDiagnosticsTab('HARD_CONFLICTS');
-                        setDiagnosticsModalOpen(true);
-                      }}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xs border font-medium cursor-pointer transition-all hover:scale-[1.02] ${
-                        diagnostics.summary.hardConflictsCount === 0
-                          ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20'
-                          : 'bg-rose-500/10 text-rose-600 border-rose-500/30 hover:bg-rose-500/20 animate-pulse'
-                      }`}
-                      title="Click to inspect exact hard constraint conflicts"
-                    >
-                      {diagnostics.summary.hardConflictsCount === 0 ? (
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                      ) : (
-                        <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
-                      )}
-                      <span>
-                        Hard Conflicts:{' '}
-                        <strong>
+                      {/* Hard Conflicts Badge Button */}
+                      <button
+                        onClick={() => {
+                          setInlineIssuesCategory(inlineIssuesCategory === 'HARD_CONFLICTS' ? null : 'HARD_CONFLICTS');
+                        }}
+                        className={`inline-flex flex-col items-start px-3 py-1.5 rounded-sm border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
+                          diagnostics.summary.hardConflictsCount === 0
+                            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20'
+                            : inlineIssuesCategory === 'HARD_CONFLICTS'
+                            ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500 ring-2 ring-rose-500/30'
+                            : 'bg-rose-500/10 text-rose-600 border-rose-500/30 hover:bg-rose-500/20 animate-pulse'
+                        }`}
+                        title="Click to view exact hard conflicts and affected slots"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {diagnostics.summary.hardConflictsCount === 0 ? (
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                          ) : (
+                            <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+                          )}
+                          <span className="font-bold">
+                            Hard Conflicts:{' '}
+                            {diagnostics.summary.hardConflictsCount === 0
+                              ? '0 PASSED'
+                              : `${diagnostics.summary.hardConflictsCount} FAILED`}
+                          </span>
+                        </div>
+                        <span className="text-[10px] opacity-80 mt-0.5">
                           {diagnostics.summary.hardConflictsCount === 0
-                            ? '0 PASSED'
-                            : `${diagnostics.summary.hardConflictsCount} FAILED`}
-                        </strong>
-                      </span>
-                    </button>
+                            ? 'Zero constraint conflicts'
+                            : (diagnostics.summary.hardConflictsSummary || 'Laboratory room collisions')}
+                        </span>
+                      </button>
 
-                    {/* Soft Warnings Badge Button */}
-                    <button
-                      onClick={() => {
-                        setDiagnosticsTab('SOFT_WARNINGS');
-                        setDiagnosticsModalOpen(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xs border font-medium cursor-pointer transition-all hover:scale-[1.02] bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
-                      title="Click to inspect soft scheduling quality warnings"
-                    >
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                      <span>
-                        Soft Warnings: <strong>{diagnostics.summary.softWarningsCount}</strong>
-                      </span>
-                    </button>
+                      {/* Soft Warnings Badge Button */}
+                      <button
+                        onClick={() => {
+                          setInlineIssuesCategory(inlineIssuesCategory === 'SOFT_WARNINGS' ? null : 'SOFT_WARNINGS');
+                        }}
+                        className={`inline-flex flex-col items-start px-3 py-1.5 rounded-sm border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
+                          inlineIssuesCategory === 'SOFT_WARNINGS'
+                            ? 'bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500 ring-2 ring-amber-500/30'
+                            : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                        }`}
+                        title="Click to view soft quality warnings and fatigue alerts"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                          <span className="font-bold">
+                            Soft Warnings: {diagnostics.summary.softWarningsCount}
+                          </span>
+                        </div>
+                        <span className="text-[10px] opacity-80 mt-0.5">
+                          {diagnostics.summary.softWarningsSummary || 'Faculty fatigue (4+ consecutive)'}
+                        </span>
+                      </button>
 
-                    {/* Optimization Opportunities Badge Button */}
-                    <button
-                      onClick={() => {
-                        setDiagnosticsTab('OPTIMIZATION');
-                        setDiagnosticsModalOpen(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xs border font-medium cursor-pointer transition-all hover:scale-[1.02] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 hover:bg-purple-500/20"
-                      title="Click to inspect scheduling optimization opportunities"
-                    >
-                      <Lightbulb className="w-3.5 h-3.5 text-purple-500" />
-                      <span>
-                        Optimization:{' '}
-                        <strong>
-                          {diagnostics.summary.optimizationsCount} Opportunities
-                        </strong>
-                      </span>
-                    </button>
+                      {/* Optimization Opportunities Badge Button */}
+                      <button
+                        onClick={() => {
+                          setInlineIssuesCategory(inlineIssuesCategory === 'OPTIMIZATION' ? null : 'OPTIMIZATION');
+                        }}
+                        className={`inline-flex flex-col items-start px-3 py-1.5 rounded-sm border font-medium cursor-pointer transition-all hover:scale-[1.01] ${
+                          inlineIssuesCategory === 'OPTIMIZATION'
+                            ? 'bg-purple-500/20 text-purple-800 dark:text-purple-200 border-purple-500 ring-2 ring-purple-500/30'
+                            : 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 hover:bg-purple-500/20'
+                        }`}
+                        title="Click to view optimization opportunities and gap reductions"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Lightbulb className="w-3.5 h-3.5 text-purple-500" />
+                          <span className="font-bold">
+                            Optimization: {diagnostics.summary.optimizationsCount} Opportunities
+                          </span>
+                        </div>
+                        <span className="text-[10px] opacity-80 mt-0.5">
+                          {diagnostics.summary.optimizationsSummary || 'Mid-day rest buffers & gaps'}
+                        </span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {/* Realistic Quality Score Pill */}
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[var(--bg-surface)] border border-[var(--border)]">
+                        <span className="text-[10px] text-[var(--text-muted)] uppercase font-mono tracking-wider">
+                          Score:
+                        </span>
+                        <span className={`font-mono font-bold text-xs ${
+                          (diagnostics.summary.qualityScore ?? 100) >= 80
+                            ? 'text-emerald-600'
+                            : (diagnostics.summary.qualityScore ?? 100) >= 60
+                            ? 'text-amber-600'
+                            : 'text-rose-600'
+                        }`}>
+                          {diagnostics.summary.qualityScore ?? 100} / 100
+                        </span>
+                      </div>
+
+                      {/* Modal Dialog Trigger */}
+                      <button
+                        onClick={() => {
+                          setDiagnosticsTab(inlineIssuesCategory || 'HARD_CONFLICTS');
+                          setDiagnosticsModalOpen(true);
+                        }}
+                        className="text-[11px] text-[var(--accent)] hover:underline font-medium cursor-pointer flex items-center gap-1"
+                        title="Open full-screen searchable diagnostic dialog"
+                      >
+                        <span>Full Dialog</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setDiagnosticsTab('HARD_CONFLICTS');
-                      setDiagnosticsModalOpen(true);
-                    }}
-                    className="text-[11px] text-[var(--accent)] hover:underline font-medium cursor-pointer flex items-center gap-1"
-                  >
-                    <span>Full Diagnostic Report</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
+                  {/* Inline Issues Drawer Panel */}
+                  {inlineIssuesCategory && (
+                    <div className="p-4 rounded-md border bg-[var(--bg-surface)] border-[var(--border)] shadow-xs space-y-3.5 transition-all animate-fadeIn">
+                      <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+                        <div className="flex items-center gap-2">
+                          {inlineIssuesCategory === 'HARD_CONFLICTS' ? (
+                            <ShieldAlert className="w-4 h-4 text-rose-500" />
+                          ) : inlineIssuesCategory === 'SOFT_WARNINGS' ? (
+                            <AlertTriangle className="w-4 h-4 text-amber-500" />
+                          ) : (
+                            <Lightbulb className="w-4 h-4 text-purple-500" />
+                          )}
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                            {inlineIssuesCategory === 'HARD_CONFLICTS'
+                              ? `Hard Conflicts (${diagnostics.hardConflicts?.length || 0})`
+                              : inlineIssuesCategory === 'SOFT_WARNINGS'
+                              ? `Soft Warnings (${diagnostics.softWarnings?.length || 0})`
+                              : `Optimization Opportunities (${diagnostics.optimizations?.length || 0})`}
+                          </h4>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setDiagnosticsTab(inlineIssuesCategory);
+                              setDiagnosticsModalOpen(true);
+                            }}
+                            className="px-2 py-0.5 rounded text-[11px] text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-colors flex items-center gap-1 cursor-pointer font-medium"
+                          >
+                            <span>Open in Modal</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => setInlineIssuesCategory(null)}
+                            className="p-1 hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded transition-colors cursor-pointer"
+                            title="Close issue drawer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* "About" Educational Callout */}
+                      <div className={`p-3 rounded text-xs leading-relaxed border ${
+                        inlineIssuesCategory === 'HARD_CONFLICTS'
+                          ? 'bg-rose-500/5 border-rose-500/20 text-rose-900 dark:text-rose-200'
+                          : inlineIssuesCategory === 'SOFT_WARNINGS'
+                          ? 'bg-amber-500/5 border-amber-500/20 text-amber-900 dark:text-amber-200'
+                          : 'bg-purple-500/5 border-purple-500/20 text-purple-900 dark:text-purple-200'
+                      }`}>
+                        <div className="flex items-center gap-1.5 font-bold mb-1">
+                          <Info className="w-3.5 h-3.5 shrink-0" />
+                          <span>
+                            About{' '}
+                            {inlineIssuesCategory === 'HARD_CONFLICTS'
+                              ? 'Hard Conflicts (Critical Scheduling Infeasibilities)'
+                              : inlineIssuesCategory === 'SOFT_WARNINGS'
+                              ? 'Soft Warnings (Pedagogical Quality & Fatigue Alerts)'
+                              : 'Optimization Opportunities (Schedule Flow Improvements)'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] opacity-90">
+                          {inlineIssuesCategory === 'HARD_CONFLICTS'
+                            ? (diagnostics.summary.aboutHardConflicts || 'Physical or statutory collisions (such as laboratory rooms double-booked at the same hour or concurrent faculty overlaps). These represent impossible allocations that block publication and must be resolved.')
+                            : inlineIssuesCategory === 'SOFT_WARNINGS'
+                            ? (diagnostics.summary.aboutSoftWarnings || 'Non-blocking workload and quality alerts (such as instructors assigned to 4 or more back-to-back periods without a rest break). These do not prevent generation but affect faculty comfort.')
+                            : (diagnostics.summary.aboutOptimization || 'Structural enhancements to eliminate idle student gaps before the final period or provide restorative lunch recovery intervals for faculty.')}
+                        </p>
+                      </div>
+
+                      {/* Category Switcher Tabs */}
+                      <div className="flex items-center gap-1.5 pt-1 overflow-x-auto text-xs">
+                        <button
+                          onClick={() => setInlineIssuesCategory('HARD_CONFLICTS')}
+                          className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                            inlineIssuesCategory === 'HARD_CONFLICTS'
+                              ? 'bg-rose-500/20 text-rose-600 font-bold border border-rose-500/30'
+                              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                          }`}
+                        >
+                          Hard Conflicts ({diagnostics.hardConflicts?.length || 0})
+                        </button>
+                        <button
+                          onClick={() => setInlineIssuesCategory('SOFT_WARNINGS')}
+                          className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                            inlineIssuesCategory === 'SOFT_WARNINGS'
+                              ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30'
+                              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                          }`}
+                        >
+                          Soft Warnings ({diagnostics.softWarnings?.length || 0})
+                        </button>
+                        <button
+                          onClick={() => setInlineIssuesCategory('OPTIMIZATION')}
+                          className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                            inlineIssuesCategory === 'OPTIMIZATION'
+                              ? 'bg-purple-500/20 text-purple-700 dark:text-purple-300 font-bold border border-purple-500/30'
+                              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                          }`}
+                        >
+                          Optimization ({diagnostics.optimizations?.length || 0})
+                        </button>
+                      </div>
+
+                      {/* Issue Cards List */}
+                      <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
+                        {((inlineIssuesCategory === 'HARD_CONFLICTS'
+                          ? diagnostics.hardConflicts
+                          : inlineIssuesCategory === 'SOFT_WARNINGS'
+                          ? diagnostics.softWarnings
+                          : diagnostics.optimizations) || []).length === 0 ? (
+                          <div className="p-6 text-center text-xs text-[var(--text-muted)] bg-[var(--bg-surface-alt)] rounded">
+                            Zero issues detected in this category.
+                          </div>
+                        ) : (
+                          ((inlineIssuesCategory === 'HARD_CONFLICTS'
+                            ? diagnostics.hardConflicts
+                            : inlineIssuesCategory === 'SOFT_WARNINGS'
+                            ? diagnostics.softWarnings
+                            : diagnostics.optimizations) || []).map((item, idx) => (
+                            <div
+                              key={item.id || idx}
+                              className="p-3 rounded border bg-[var(--bg-surface-alt)]/60 border-[var(--border)] hover:border-[var(--accent)] transition-all space-y-2 text-xs"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-[var(--text-primary)]">
+                                      {item.title}
+                                    </span>
+                                    {item.className && (
+                                      <span className="px-1.5 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border)] font-medium text-[10px]">
+                                        {item.className}
+                                      </span>
+                                    )}
+                                    {item.day && (
+                                      <span className="px-1.5 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border)] font-mono text-[10px]">
+                                        {item.day} P{item.period}
+                                      </span>
+                                    )}
+                                    {item.roomName && (
+                                      <span className="px-1.5 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border)] font-mono text-[10px] text-rose-600 font-semibold">
+                                        {item.roomName}
+                                      </span>
+                                    )}
+                                    {item.teacherName && (
+                                      <span className="px-1.5 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border)] text-[10px]">
+                                        {item.teacherName}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {(item.classId || item.primaryAssignment?.classId) && (
+                                  <button
+                                    onClick={() =>
+                                      handleNavigateToCell({
+                                        classId: item.classId || item.primaryAssignment?.classId,
+                                        day: item.day,
+                                        period: item.period,
+                                        title: item.title,
+                                        explanation: item.explanation,
+                                        conflictingAssignment: item.conflictingAssignment,
+                                      })
+                                    }
+                                    className="px-2 py-1 rounded bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/30 text-[11px] font-medium hover:opacity-90 transition-opacity cursor-pointer flex items-center gap-1 shrink-0"
+                                    title="Highlight affected slot in timetable grid"
+                                  >
+                                    <span>Locate in Grid</span>
+                                    <ArrowRight className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* What is the issue */}
+                              <p className="text-[var(--text-primary)] leading-relaxed">
+                                {item.explanation || item.currentArrangement}
+                              </p>
+
+                              {/* Conflicting assignment preview if present */}
+                              {item.primaryAssignment && item.conflictingAssignment && (
+                                <div className="p-2 rounded bg-rose-500/5 border border-rose-500/20 text-[11px] grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  <div>
+                                    <span className="font-semibold text-rose-600 block">Class 1:</span>
+                                    <span>{item.primaryAssignment.className} ({item.primaryAssignment.subjectName || item.primaryAssignment.subjectCode}) in {item.primaryAssignment.roomName}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-rose-600 block">Class 2 (Collision):</span>
+                                    <span>{item.conflictingAssignment.className} ({item.conflictingAssignment.subjectName || item.conflictingAssignment.subjectCode}) in {item.conflictingAssignment.roomName}</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Suggested resolution / fix */}
+                              {(item.rootCause || item.resolution || item.suggestedArrangement) && (
+                                <div className="pt-1.5 border-t border-[var(--border)]/70 text-[11px] text-[var(--text-secondary)] space-y-0.5">
+                                  {item.rootCause && (
+                                    <p>
+                                      <strong className="text-[var(--text-muted)]">Root Cause:</strong> {item.rootCause}
+                                    </p>
+                                  )}
+                                  {(item.resolution || item.suggestedArrangement) && (
+                                    <p>
+                                      <strong className="text-emerald-600">Action:</strong> {item.resolution || item.suggestedArrangement}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

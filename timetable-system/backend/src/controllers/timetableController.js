@@ -415,6 +415,27 @@ const generateTimetable = async (req, res) => {
       }
     }
 
+    // Assess initial realistic diagnostics and score
+    try {
+      const initialDiags = await generateTimetableDiagnostics(newTimetable);
+      if (initialDiags && initialDiags.summary) {
+        newTimetable.qualityScore = newTimetable.qualityScore || {};
+        newTimetable.qualityScore.overall = initialDiags.summary.qualityScore;
+        newTimetable.generationStats = newTimetable.generationStats || {};
+        newTimetable.generationStats.hardViolations = initialDiags.summary.hardConflictsCount;
+        newTimetable.generationStats.softViolations = initialDiags.summary.softWarningsCount;
+        await Timetable.findByIdAndUpdate(newTimetable._id, {
+          $set: {
+            'qualityScore.overall': initialDiags.summary.qualityScore,
+            'generationStats.hardViolations': initialDiags.summary.hardConflictsCount,
+            'generationStats.softViolations': initialDiags.summary.softWarningsCount,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('Initial diagnostics assessment notice:', e.message);
+    }
+
     return sendSuccess(
       res,
       201,
@@ -1613,6 +1634,24 @@ const getTimetableDiagnosticsController = async (req, res) => {
     }
 
     const diagnostics = await generateTimetableDiagnostics(timetable);
+
+    // Sync authoritative quality score & conflict statistics to MongoDB
+    if (diagnostics && diagnostics.summary) {
+      const qScore = diagnostics.summary.qualityScore;
+      const hCount = diagnostics.summary.hardConflictsCount;
+      const sCount = diagnostics.summary.softWarningsCount;
+
+      if (timetable.qualityScore?.overall !== qScore || timetable.generationStats?.hardViolations !== hCount) {
+        await Timetable.findByIdAndUpdate(timetable._id, {
+          $set: {
+            'qualityScore.overall': qScore,
+            'generationStats.hardViolations': hCount,
+            'generationStats.softViolations': sCount,
+          },
+        });
+      }
+    }
+
     return sendSuccess(res, 200, diagnostics, 'Diagnostics generated successfully');
   } catch (err) {
     return sendError(res, 500, `Failed to generate diagnostics: ${err.message}`);
