@@ -44,6 +44,7 @@ const EDIT_BLOCKING_TYPES = new Set([
   'LAB_ROOM_MISMATCH',
   'DAILY_SUBJECT_UNIQUENESS_VIOLATION',
   'ELECTIVE_DESYNCHRONIZATION',
+  'MINOR_TRACK_DESYNCHRONIZATION',
 ]);
 
 // Validate the (already mutated) in-memory timetable.
@@ -413,6 +414,8 @@ const generateTimetable = async (req, res) => {
       label: `Version ${version}`,
       isAccepted: false,
       isComplete: !!engineResult.isComplete,
+      publicationStatus: engineResult.isComplete ? 'READY_TO_PUBLISH' : 'VALIDATION_FAILED',
+      publicationGatePassed: !!engineResult.isComplete,
       classTimetables: engineResult.classTimetables,
       qualityScore: engineResult.qualityScore,
       validationChecks: engineResult.validationChecks || {},
@@ -421,6 +424,8 @@ const generateTimetable = async (req, res) => {
       unplacedSubjects: engineResult.unplacedSubjects || [],
       permissionRequests: engineResult.permissionRequests || [],
       generationStats: engineResult.generationStats || {},
+      pipelineStages: engineResult.pipelineStages || [],
+      repairsAuditTrail: engineResult.repairsAuditTrail || [],
     });
 
     let newTimetable;
