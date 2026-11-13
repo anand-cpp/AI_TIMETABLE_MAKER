@@ -87,6 +87,7 @@ const TimetableBuilder = () => {
       try {
         localStorage.setItem(`timetable-cache-${id}`, JSON.stringify(tt));
         localStorage.setItem('latest-timetable-cache', JSON.stringify(tt));
+        localStorage.setItem('active-timetable-version-id', id);
       } catch { /* ignore storage cache errors */ }
       const firstClass = tt?.classTimetables?.[0];
       const classExists = tt?.classTimetables?.some(ct => ct.classId?.toString() === selectedClassId);
@@ -122,7 +123,8 @@ const TimetableBuilder = () => {
       const vers = res.data.versions || [];
       setVersions(vers);
       if (autoSelectLatest && vers.length > 0) {
-        const target = vers.find(v => v.isAccepted) || vers[0];
+        const savedId = localStorage.getItem('active-timetable-version-id');
+        const target = (savedId && vers.find(v => v._id === savedId)) || vers[0];
         if (target?._id) {
           await loadVersion(target._id);
         }
@@ -202,6 +204,7 @@ const TimetableBuilder = () => {
       try {
         localStorage.setItem(`timetable-cache-${tt._id}`, JSON.stringify(tt));
         localStorage.setItem('latest-timetable-cache', JSON.stringify(tt));
+        localStorage.setItem('active-timetable-version-id', tt._id);
       } catch { /* ignore storage cache errors */ }
 
       setSaveStatus('saved');
@@ -301,6 +304,7 @@ const TimetableBuilder = () => {
       setDeleteTarget(null);
       if (activeVersion?._id === deleteTarget._id) {
         setActiveVersion(null);
+        localStorage.removeItem('active-timetable-version-id');
       }
       await loadVersions();
     } catch (err) {

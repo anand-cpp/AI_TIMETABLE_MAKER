@@ -826,9 +826,6 @@ const editSwapSlots = async (req, res) => {
       const s1 = group1.slots[0];
       const s2 = group2.slots[0];
 
-      if (s1.isLocked || s2.isLocked) {
-        return sendError(res, 400, 'Cannot swap locked slots. Unlock them first.');
-      }
       if (s1.isBreak || s2.isBreak) {
         return sendError(res, 400, 'Cannot swap break slots');
       }
@@ -862,6 +859,10 @@ const editSwapSlots = async (req, res) => {
             );
           }
         }
+      }
+
+      if (s1.isLocked || s2.isLocked) {
+        return sendError(res, 400, 'Cannot swap locked slots. Unlock them first.');
       }
 
       const isElectiveSlot = (s) => Boolean(s && !s.isEmpty && !s.isBreak && (s.isElective || s.electiveGroupId || s.subjectType === 'elective'));

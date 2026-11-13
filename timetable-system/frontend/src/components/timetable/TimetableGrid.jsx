@@ -17,7 +17,7 @@ import toast from 'react-hot-toast';
 import { cn } from '../../utils/cn';
 import { dayShort } from '../../utils/formatters';
 import { checkSlotConflict } from '../../utils/conflictChecker';
-import { RotateCcw, RotateCw, AlertTriangle, FlaskConical, ArrowLeftRight, X } from 'lucide-react';
+import { RotateCcw, RotateCw, AlertTriangle, FlaskConical, ArrowLeftRight, ArrowRight, X } from 'lucide-react';
 import LabUtilizationReport from './LabUtilizationReport';
 import TimetableLegend from './TimetableLegend';
 import RebalanceModal from './RebalanceModal';
