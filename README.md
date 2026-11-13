@@ -1,6 +1,6 @@
 # AI Timetable Maker
 
-An intelligent academic timetable management and constraint-aware scheduling platform. Built for university engineering departments, the system automates conflict-free scheduling across classes, faculty, laboratories, and synchronized elective baskets, providing real-time diagnostics, deterministic undo/redo state management, and official export generation.
+An intelligent, institutional-grade academic timetable management and constraint-aware scheduling platform. Built for university engineering departments, the system automates conflict-free scheduling across classes, faculty, laboratories, and synchronized elective/minor baskets, providing real-time diagnostics, deterministic undo/redo state management, and official export generation.
 
 ---
 
@@ -8,36 +8,35 @@ An intelligent academic timetable management and constraint-aware scheduling pla
 
 - [Overview](#overview)
 - [System Architecture](#system-architecture)
-- [Core Scheduling Capabilities](#core-scheduling-capabilities)
-  - [1. Configurable Minor Subject System](#1-configurable-minor-subject-system)
-  - [2. Mandatory Elective Synchronization](#2-mandatory-elective-synchronization)
-  - [3. Daily Subject Uniqueness & Workload Conservation](#3-daily-subject-uniqueness--workload-conservation)
-  - [4. Atomic Laboratory Block Scheduling](#4-atomic-laboratory-block-scheduling)
-  - [5. Conflict Diagnostics & Optimization Intelligence](#5-conflict-diagnostics--optimization-intelligence)
-  - [6. Deterministic Undo/Redo Engine](#6-deterministic-undoredo-engine)
-  - [7. Official Institutional Format Exports](#7-official-institutional-format-exports)
+- [Institutional Scheduling Rules & Policies](#institutional-scheduling-rules--policies)
+  - [1. Faculty Rest-Period Policy & Guaranteed Rest Gap](#1-faculty-rest-period-policy--guaranteed-rest-gap)
+  - [2. Dynamic Global Minor-Track Synchronization](#2-dynamic-global-minor-track-synchronization)
+  - [3. Institutional Laboratory Allocation Matrix](#3-institutional-laboratory-allocation-matrix)
+  - [4. Mandatory Elective Basket Synchronization](#4-mandatory-elective-basket-synchronization)
+  - [5. Daily Subject Uniqueness & Workload Conservation](#5-daily-subject-uniqueness--workload-conservation)
+  - [6. Realistic Quality Scoring Model](#6-realistic-quality-scoring-model)
+  - [7. Interactive Conflict Diagnostics & Optimization Intelligence](#7-interactive-conflict-diagnostics--optimization-intelligence)
+  - [8. Deterministic Undo/Redo Engine & Atomic Swapping](#8-deterministic-undoredo-engine--atomic-swapping)
+  - [9. Teacher Profile Management & Synchronized Name Propagation](#9-teacher-profile-management--synchronized-name-propagation)
 - [Technology Stack](#technology-stack)
 - [Project Structure](#project-structure)
 - [Engine Pipeline & Verification Gates](#engine-pipeline--verification-gates)
 - [REST API Reference](#rest-api-reference)
 - [Installation & Local Setup](#installation--local-setup)
-- [Environment Variables](#environment-variables)
-- [Testing & Quality Assurance](#testing--quality-assurance)
-- [Security & Data Privacy](#security--data-privacy)
-- [Known Limitations & Roadmap](#known-limitations--roadmap)
+- [Verification & Automated Test Suite](#verification--automated-test-suite)
 - [License](#license)
 
 ---
 
 ## Overview
 
-Academic timetable scheduling in higher education institutions involves complex combinatorial constraints:
+Academic timetable scheduling in higher education institutions involves strict combinatorial constraints:
 
-- Faculty cannot teach two classes simultaneously.
-- Laboratory sessions require 2 to 3 contiguous periods and dedicated physical rooms without double-booking.
-- Paired class sections (e.g., S4 CSE A and S4 CSE B) taking common elective baskets or university Minor subjects must have their periods strictly synchronized.
-- Core KTU theory subjects should not repeat on the same day unless pedagogically required.
-- Faculty daily workloads must remain balanced across all five working days (Monday to Friday).
+- **Faculty Workload & Rest Gaps**: Every instructor must receive sufficient breathing room throughout the teaching day. No instructor may be assigned 3 or more consecutive teaching periods without a rest gap.
+- **Lunch Boundary Separation**: Midday lunch breaks (Mon–Thu between P3 and P4; Friday between P4 and P5) physically reset fatigue runs. Consecutive teaching across lunch is prohibited from being counted as back-to-back fatigue.
+- **Physical Laboratory Isolation**: Practicals must follow exact institutional room assignments without double-booking. S1/S2 practicals are restricted to Lab 1–3; S3–S8 practicals and mini-projects are restricted to Lab 4; S8 Capstone Project is assigned dedicated rooms.
+- **Dynamic Minor Synchronization**: S4 CSE A and S4 CSE B taking university Minor tracks must have identical time slots selected dynamically by the scheduler, avoiding hardcoded time slots.
+- **Synchronized Electives**: Paired class sections sharing an elective basket must have identical periods.
 
 **AI Timetable Maker** solves these challenges using a deterministic multi-stage constraint-satisfaction engine coupled with local search optimization and interactive administrative tooling.
 
@@ -51,6 +50,7 @@ flowchart TD
         UI[Timetable Builder & Grid]
         CD[Conflict Diagnostics Modal]
         UR[Deterministic Undo / Redo Engine]
+        FP[Faculty Profile & Management]
         EX[Official PDF / Excel Exporter]
     end
 
@@ -58,15 +58,16 @@ flowchart TD
         AUTH[Auth & RBAC Middleware]
         TC[Timetable Controller]
         MC[Minor & Elective Controllers]
-        DS[Diagnostic & Rebalance Service]
+        TEACH[Teacher Profile Controller]
+        DS[Diagnostic & Quality Scorer Service]
     end
 
     subgraph Engine ["Scheduling & Constraint Engine"]
         FC[Feasibility Checker]
-        SP[Slot Placer & Minor Solver]
+        SP[Slot Placer & Dynamic Minor Solver]
         CV[Hard/Soft Constraint Validator]
         PV[Persisted Validator]
-        QS[Quality Scorer & Optimizer]
+        QS[Realistic Quality Scorer & Optimizer]
     end
 
     subgraph Storage ["Persistence Layer"]
@@ -75,64 +76,82 @@ flowchart TD
 
     UI -->|REST / JWT| TC
     CD -->|Diagnostics API| DS
+    FP -->|Profile Updates| TEACH
     UR -->|Atomic Swaps & Revisions| TC
     TC --> AUTH
+    TEACH --> AUTH
     AUTH --> Engine
     Engine --> FC --> SP --> CV --> PV --> QS
     PV --> MDB
     TC --> MDB
+    TEACH --> MDB
     EX -->|Download Endpoints| TC
 ```
 
 ---
 
-## Core Scheduling Capabilities
+## Institutional Scheduling Rules & Policies
 
-### 1. Configurable Minor Subject System
-- **Semester 4 CSE Allocation**: Fixed 4 periods per week reserved for Minor subjects (`Monday P3`, `Thursday P3`, `Friday P4`, `Friday P6`).
-- **Section Synchronization**: S4 CSE A and S4 CSE B are synchronized to the exact same slots to allow students across sections to attend cross-departmental Minor tracks.
-- **Sub-Minor Specialization**: Supports multiple parallel sub-minors, each with its own subject code, faculty allocation, room assignment, and weekly hours.
-- **Visual Distinctiveness**: Rendered in the timetable grid with distinct purple/amber `MINOR` badges (without redundant `/minor` label text).
+### 1. Faculty Rest-Period Policy & Guaranteed Rest Gap
+- **Hard Constraint (`FACULTY_REST_GAP`)**: A maximum of 2 consecutive teaching periods is permitted globally across all classes, sections, and departments. 3 or more consecutive teaching periods without a free period are strictly prohibited.
+- **Lunch Boundary Reset**:
+  - **Monday–Thursday**: Lunch break occurs between Period 3 and Period 4. Periods P3 and P4 are physically separated by lunch and are **not** consecutive teaching periods.
+  - **Friday**: Jum'ah / Lunch break occurs between Period 4 and Period 5. Periods P4 and P5 are physically separated by lunch.
+- **Rest Optimization Preference**: The scheduling optimizer prioritizes the alternating pattern `Teaching -> Free -> Teaching -> Free -> Teaching` to prevent educator fatigue.
+- **3-Period Lab Instructor Staggering**: In 3-period laboratory blocks, primary and co-instructors are staggered (Period 1: Primary; Period 2: Primary + Co-instructor; Period 3: Co-instructor) ensuring that no instructor exceeds 2 consecutive periods during practicals.
 
-### 2. Mandatory Elective Synchronization
-- Paired sections sharing an elective basket (e.g., S4 Professional Elective 1) are locked into identical day and period coordinates.
-- **Bidirectional Movement**: Dragging or swapping an elective slot in Section A automatically moves the corresponding slot in Section B, preventing cross-section elective divergence.
+### 2. Dynamic Global Minor-Track Synchronization
+- **Dynamic Slot Discovery**: Removes all legacy hardcoded Minor period assumptions (`Mon P3, Thu P3, Fri P4, Fri P6`). The engine dynamically computes common free periods across participating sections.
+- **Section Synchronization**: S4 CSE A and S4 CSE B receive 100% identical Minor-track day and period slots.
+- **Sub-Minor Parallelism**: Within each synchronized Minor slot, parallel sub-minor tracks (`Minor / OS`, `Minor / DBMS`, `Minor / COA`, `Minor / Mathematics`) run concurrently without teacher collisions.
 
-### 3. Daily Subject Uniqueness & Workload Conservation
-- Core KTU theory subjects are restricted to at most **1 period per day** per section, distributing weekly lecture hours evenly from Monday through Friday.
-- Total lecture, tutorial, practical, and research (L/T/P/R) hours are strictly conserved; the engine never increases or drops prescribed syllabus hours.
+### 3. Institutional Laboratory Allocation Matrix
+- **Semester 1 & 2 Practicals**: Strictly restricted to `Lab 1`, `Lab 2`, or `Lab 3`. Practicals for S1/S2 are prohibited from occupying `Lab 4`.
+- **Semester 3 to 8 Practicals & Mini-Projects**: Strictly assigned to designated `Lab 4`. Practicals for S3–S8 are prohibited from using `Lab 1`, `Lab 2`, or `Lab 3`.
+- **Single-Occupancy Lab 4**: The engine enforces absolute zero double-booking for `Lab 4`. No two classes can occupy Lab 4 simultaneously.
+- **S8 Capstone Project Phase-2 (`CST416`/`CSD416`)**:
+  - Assigned dedicated physical classrooms: `Room 501` (S8 CSE A) and `Room 502` (S8 CSE B) on Thursday (Periods 1–6) and Friday (Periods 1–6).
+  - Supervised by Dr. S Gunasekaran, assisted by the `Project Committee` on P3 & P6 (Thu) and P3 & P4 (Fri) to respect the 2-period rest gap limit.
 
-### 4. Atomic Laboratory Block Scheduling
-- Multi-period laboratory sessions (2-hour or 3-hour blocks) are scheduled and relocated **atomically**.
-- **Break Interval Integrity**: The placement solver guarantees lab blocks do not cross the afternoon lunch interval or the Friday prayer/lunch break.
-- **Friday Constraint**: Prohibits 3-hour labs on Friday afternoon due to shorter 50-minute periods.
-- **Room Collision Prevention**: Lab facilities (Lab 1 through Lab 4) are tracked globally across all academic departments to avoid double-booking.
+### 4. Mandatory Elective Basket Synchronization
+- Paired sections sharing an elective basket (e.g., S4 Professional Elective 1, S8 Electives) are locked into identical day and period coordinates.
+- **Bidirectional Movement**: Dragging or swapping an elective slot in Section A automatically synchronizes the corresponding slot in Section B, preventing cross-section elective divergence (`ELECTIVE_DESYNCHRONIZATION`).
 
-### 5. Conflict Diagnostics & Optimization Intelligence
-- Integrated diagnostic engine (`diagnosticService.js`) performing multi-pass validation across all generated timetables.
-- **Classification**: Categorizes findings into `CRITICAL`, `ERROR` (Hard Conflicts), `WARNING` (Soft Scheduling Quality), `OPTIMIZATION` (Distribution Balance), and `INFO`.
-- **Interactive UI Panel**: Clickable badges (`Hard Conflicts: 0 PASSED`, `Soft Warnings`) open an interactive modal with root-cause explanations and two-party conflict resolution breakdowns.
-- **Direct Grid Targeting**: Clicking *"Locate in Grid"* closes the modal, sets the target class, displays a diagnostic focus banner, and rings the affected slot with an animated focus indicator.
+### 5. Daily Subject Uniqueness & Workload Conservation
+- **Theory Distribution**: Under-scheduled theory courses are prohibited from scheduling excess periods on a single day unless mathematically required by high-credit loads ($\ge 5$ hours) or compressed schedules (e.g., S8 3-day window).
+- **Workload Conservation**: Weekly lecture, tutorial, and practical contact hours strictly match KTU syllabus credit requirements.
 
-### 6. Deterministic Undo/Redo Engine
-- Complete revision tracking for manual timetable modifications.
-- Stack-based state transitions persisted to MongoDB across page reloads.
-- Branch invalidation: Applying a new modification after undo purges the forward redo history.
-- **Input Typing Protection**: Global shortcut listeners for `Ctrl+Z`, `Ctrl+Y`, and `Ctrl+Shift+Z` ignore events originating from `<input>`, `<textarea>`, `<select>`, or `contentEditable` elements.
+### 6. Realistic Quality Scoring Model
+- **No Fictitious 100/100 Scores**: The quality scorer evaluates both hard conflicts and soft warnings. Timetables with conflicts or warnings are realistically scored (e.g., 15/100 to 81/100) using weighted deductions:
+  $$\text{Score} = 100 - (\text{HardConflicts} \times 8) - (\text{SoftWarnings} \times 0.6) - (\text{Unplaced} \times 10)$$
+- **Publishability Gate**: A timetable version is only publishable if it has 0 unplaced subjects and 0 hard conflicts.
 
-### 7. Official Institutional Format Exports
-- **Ahalia Standard PDF**: Formal institution header, comprehensive subject and faculty legend table, and signature approval blocks for HoD and Principal.
-- **All-Classes PDF Booklet**: Batch export compiling all semester sections into a unified print-ready booklet.
-- **Teacher Personal Schedules**: Individual faculty timetables detailing class assignments, room numbers, and free preparation periods.
+### 7. Interactive Conflict Diagnostics & Optimization Intelligence
+- **Clickable Badges**: Diagnostic indicators in Quick Timetable (`Hard Conflicts`, `Soft Warnings`, `Optimization`) are fully interactive with "About & Issues ▾" subtitles.
+- **Issue Diagnostics Modal**: Clicking any badge opens the modal showing:
+  - Affected Class, Day, Period, Subject, Faculty, and Room
+  - Detailed description and failure justification
+  - Underlying Root Cause analysis
+  - Actionable Recommended Resolution
+  - **Locate in Grid**: Highlights and focuses the conflicting cell directly in the timetable grid.
+
+### 8. Deterministic Undo/Redo Engine & Atomic Swapping
+- **Atomic Multi-Period Swapping**: Swapping a multi-period laboratory block automatically displaces or exchanges the complete contiguous block.
+- **State History**: Full undo and redo capabilities for manual swap operations with instant database synchronization.
+
+### 9. Teacher Profile Management & Synchronized Name Propagation
+- **RESTful Endpoints**: Full CRUD support (`create`, `update`, `getById`) in `teacherService.js` and `teacherController.js`.
+- **Field Support**: Supports `designation`, `maxPeriodsPerWeek`, and `unavailability`.
+- **Faculty Name Correction**: Corrected `Mr Sangeeth` to `Ms Sangeetha` across all MongoDB records, active timetable snapshots, and JSON caches.
 
 ---
 
 ## Technology Stack
 
-- **Frontend**: React 19, Vite, Tailwind CSS, Lucide Icons, DnD-Kit (drag-and-drop).
-- **Backend**: Node.js, Express, Mongoose, PDFKit, ExcelJS.
-- **Database**: MongoDB (Local or MongoDB Atlas).
-- **Automated Testing**: Node.js Native Test Runner (`node --test`), Playwright (E2E browser automation).
+- **Frontend**: React 19, Vite, Tailwind CSS, Lucide Icons, Canvas Confetti
+- **Backend**: Node.js, Express.js, MongoDB, Mongoose
+- **Testing & Verification**: Playwright E2E, Node.js Assertions
+- **Export Engines**: PDFKit, ExcelJS
 
 ---
 
@@ -140,216 +159,78 @@ flowchart TD
 
 ```
 AI_TIMETABLE_MAKER/
-├── .gitignore                      # Security exclusions, private data & export rules
-├── README.md                       # Complete technical documentation
+├── scripts/
+│   ├── master_verification_suite.js     # 7-point integration test suite
+│   ├── capture_ui_verification.js       # Playwright E2E UI screenshot script
+│   └── correct_sangeetha_name.js        # Faculty name synchronization script
 ├── timetable-system/
 │   ├── backend/
 │   │   ├── src/
-│   │   │   ├── config/             # Database connection, mailer, and system constants
-│   │   │   ├── controllers/        # REST route handlers (Auth, Timetable, Teachers, etc.)
-│   │   │   ├── middleware/         # JWT auth, rate limiting, and error handling
-│   │   │   ├── models/             # Mongoose schemas (Timetable, MinorGroup, ElectiveGroup, etc.)
-│   │   │   ├── routes/             # Express API routes
-│   │   │   ├── services/
-│   │   │   │   ├── engine/         # Feasibility checker, slot placer, diagnosticService
-│   │   │   │   ├── pdfService.js   # Official Ahalia PDF generation engine
-│   │   │   │   └── rebalanceService.js # Smart teacher swap and conflict rebalance engine
-│   │   │   └── server.js           # Server bootstrap and connection lifecycle
-│   │   ├── scripts/                # Database seed and maintenance utilities
-│   │   └── tests/                  # Automated integration, engine, and Playwright E2E suites
+│   │   │   ├── controllers/             # Timetable, teacher, and auth controllers
+│   │   │   ├── models/                  # Mongoose schemas (Timetable, Teacher, Class)
+│   │   │   └── services/engine/         # Core constraint and scheduling engine
+│   │   │       ├── constraintValidator.js # Hard/soft rule validation
+│   │   │       ├── dataLoader.js        # Normalized academic data hydration
+│   │   │       ├── diagnosticService.js  # Diagnostic explanations and root causes
+│   │   │       ├── orchestrator.js       # Multi-pass schedule orchestrator
+│   │   │       ├── qualityScorer.js      # Realistic score calculation
+│   │   │       ├── slotPlacer.js         # Placement engine and rest-gap logic
+│   │   │       └── subMinorSolver.js     # Dynamic minor allocation solver
+│   │   └── server.js                    # Express application entrypoint
 │   └── frontend/
 │       ├── src/
-│       │   ├── components/
-│       │   │   ├── timetable/      # TimetableGrid, SlotCell, ConflictDiagnosticsModal
-│       │   │   ├── teachers/       # Faculty roster, workload forms, personal timetable modal
-│       │   │   └── ui/             # Reusable design system (Modal, Button, Input, Table)
-│       │   ├── pages/
-│       │   │   ├── admin/          # TimetableBuilder, MinorSubjects, ElectiveGroups, Dashboard
-│       │   │   ├── teacher/        # Teacher dashboard and personal timetable
-│       │   │   └── public/         # Landing page, student viewer, login portals
-│       │   ├── services/           # Axios API clients
-│       │   └── App.jsx             # React router configuration and theme providers
-│       ├── vite.config.js          # Vite build configuration
-│       └── tailwind.config.js      # Styling and token setup
+│       │   ├── components/timetable/    # ConflictDiagnosticsModal, VersionHistory
+│       │   ├── pages/admin/             # TimetableBuilder, FacultyProfile
+│       │   └── services/                # teacherService, timetableService
+│       └── package.json
+└── README.md
 ```
-
----
-
-## Engine Pipeline & Verification Gates
-
-The automated scheduling engine executes through distinct verification stages:
-
-```
-[ Academic Workload Inputs ]
-             │
-             ▼
-┌───────────────────────────┐
-│ 1. Feasibility Checker    │ ── Over-allocated hours? ──> Terminate with actionable error
-└───────────────────────────┘
-             │ Feasible
-             ▼
-┌───────────────────────────┐
-│ 2. Locked Slot Allocation │ ── Places Minor subjects (Mon/Thu/Fri) & fixed Institutional slots
-└───────────────────────────┘
-             │
-             ▼
-┌───────────────────────────┐
-│ 3. Elective Synchronization│ ── Places synchronized elective baskets across paired classes
-└───────────────────────────┘
-             │
-             ▼
-┌───────────────────────────┐
-│ 4. Atomic Laboratory Blocks│ ── Places 2/3-period practicals with room allocation
-└───────────────────────────┘
-             │
-             ▼
-┌───────────────────────────┐
-│ 5. Theory Slot Placement  │ ── Enforces 1-theory-per-day rule and faculty daily limits
-└───────────────────────────┘
-             │
-             ▼
-┌───────────────────────────┐
-│ 6. Validation Gates       │ ── Evaluates hard constraints & persisted database records
-└───────────────────────────┘
-             │
-             ▼
-┌───────────────────────────┐
-│ 7. Quality Scorer & Report│ ── Computes overall score & prepares conflict diagnostics
-└───────────────────────────┘
-```
-
----
-
-## REST API Reference
-
-### Timetable Management
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/timetable/generate` | Generates a new candidate timetable version |
-| `GET` | `/api/timetable/versions` | Retrieves all timetable revisions and publication states |
-| `GET` | `/api/timetable/versions/:id` | Retrieves full matrix slots for a specific timetable revision |
-| `POST` | `/api/timetable/versions/:id/swap` | Performs an atomic slot swap with revision checks |
-| `POST` | `/api/timetable/versions/:id/undo` | Reverts the previous slot modification from history |
-| `POST` | `/api/timetable/versions/:id/redo` | Re-applies an undone slot modification |
-| `GET` | `/api/timetable/versions/:id/diagnostics`| Returns full conflict, warning, and optimization diagnostics |
-| `PUT` | `/api/timetable/versions/:id/accept` | Marks timetable as published and authoritative |
-
-### Minor & Elective Administration
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/minor-groups` | Lists configured university Minor tracks and sub-minors |
-| `POST` | `/api/minor-groups` | Creates or updates a Minor requirement group |
-| `GET` | `/api/elective-groups` | Lists paired elective synchronization baskets |
-| `POST` | `/api/elective-groups` | Registers synchronized elective pairings |
-
-### Document Exports
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/timetable/versions/:id/export/ahalia-pdf` | Generates official Ahalia format PDF for a class |
-| `GET` | `/api/timetable/versions/:id/export/all-classes-pdf` | Downloads complete all-classes PDF booklet |
-| `GET` | `/api/timetable/versions/:id/export/all-classes-excel` | Generates institutional master Excel workbook |
 
 ---
 
 ## Installation & Local Setup
 
 ### Prerequisites
-- **Node.js**: v18.x, v20.x, or v22.x
-- **MongoDB**: Local Community Server (default `mongodb://127.0.0.1:27017/timetable_db`) or MongoDB Atlas
-- **NPM**: v9.x or later
+- Node.js (v18+ or v20+)
+- MongoDB running locally on `mongodb://127.0.0.1:27017`
 
-### 1. Clone the Repository
+### Setup Backend
 ```bash
-git clone https://github.com/anand-cpp/AI_TIMETABLE_MAKER.git
-cd AI_TIMETABLE_MAKER/timetable-system
-```
-
-### 2. Backend Setup
-```bash
-cd backend
+cd timetable-system/backend
 npm install
-cp .env.example .env
 npm run dev
+# Backend runs on http://127.0.0.1:5000
 ```
-The backend API initializes on `http://localhost:5000`.
 
-### 3. Frontend Setup
-In a new terminal:
+### Setup Frontend
 ```bash
 cd timetable-system/frontend
 npm install
 npm run dev
+# Frontend runs on http://localhost:5174
 ```
-The Vite development server runs on `http://localhost:5173` (or `http://localhost:5174`).
 
 ---
 
-## Environment Variables
+## Verification & Automated Test Suite
 
-Safe template variables located in `timetable-system/backend/.env.example`:
+Run the master verification suite to test all institutional scheduling constraints:
 
-| Variable | Description | Default / Example |
-|---|---|---|
-| `PORT` | Backend server port | `5000` |
-| `MONGODB_URI` | MongoDB connection URI | `mongodb://127.0.0.1:27017/timetable_db` |
-| `JWT_SECRET` | Secret key for signing JSON Web Tokens | `your-secure-jwt-secret-here` |
-| `JWT_EXPIRES_IN` | Token expiration duration | `7d` |
-| `CLIENT_URL` | Allowed CORS origins for frontend client | `http://localhost:5173,http://localhost:5174` |
-| `NODE_ENV` | Runtime environment mode | `development` |
-
----
-
-## Testing & Quality Assurance
-
-### Backend Unit & Constraint Regression Tests
-Execute constraint validation, atomic swap, and conflict diagnostic test suites:
 ```bash
-cd timetable-system/backend
-node --test tests/conflict_diagnostics_and_undo_redo_repair.test.js
-node --test tests/master_optimization_faculty_balance_and_undo_redo.test.js
+node scripts/master_verification_suite.js
 ```
 
-### Playwright End-to-End Test Suite
-Automated headless browser suite testing complete user workflows:
-```bash
-cd timetable-system/backend
-node tests/playwright_e2e_full_suite.js
-```
-The E2E test suite validates:
-1. Public landing page and student schedule viewer.
-2. Administrative authentication and dashboard KPIs.
-3. Classes, teachers, subjects, and Minor subjects management.
-4. Timetable grid matrix and `MINOR`, `LAB`, and `ELECTIVE` badge rendering.
-5. Interactive Conflict Diagnostics Modal, tabs, and cell locator highlighting.
-6. Undo/redo controls and form typing keyboard protection.
-7. Faculty portal login and personalized teacher weekly timetable.
-
-### Frontend Production Build
-Verify compilation and minification:
-```bash
-cd timetable-system/frontend
-npm run build
-```
-
----
-
-## Security & Data Privacy
-
-- **Data Isolation**: Local database records, generated academic schedules, institutional spreadsheets, and production exports are strictly excluded from version control.
-- **Credential Protection**: Environment files (`.env*`) and private keys are barred via `.gitignore`. Only sanitized configuration templates (`.env.example`) are versioned.
-- **Role-Based Access Control**: Administrative routes require valid bearer tokens verified against bcrypt-hashed admin credentials.
-- **Audit Logging**: Manual timetable overrides and rebalances record administrative audit trails with timestamps and user identifiers.
-
----
-
-## Known Limitations & Roadmap
-
-- **Multi-Campus Multi-Tenant Scheduling**: The current engine is optimized for a single academic campus with shared laboratory pools. Future iterations will support multi-campus constraints.
-- **Room Capacity Constraints**: Laboratory assignments enforce room uniqueness; lecture classroom capacity matching against class strength is scheduled for subsequent releases.
-- **Automated Substitute Scheduling**: Faculty substitution schemas are modeled; dynamic automated real-time substitute recommendation is under active development.
+### Test Suite Coverage:
+1. **Faculty Rest Gap**: Confirms lunch boundary separation and rejects $\ge 3$ consecutive periods.
+2. **Dynamic Minor Sync**: Verifies identical Minor slots between S4 CSE A and S4 CSE B without faculty collisions.
+3. **Laboratory Matrix**: Enforces Lab 1–3 for S1/S2 and Lab 4 for S3–S8.
+4. **Faculty Name Correction**: Confirms Ms. Sangeetha is updated with 0 duplicates.
+5. **Teacher Profile Service**: Validates `teacherService.create`/`update` and Edit Profile modal.
+6. **Realistic Quality Scoring**: Ensures scores are mathematically deducted and never falsely 100/100.
+7. **Diagnostics UI**: Verifies interactive diagnostic explanations and resolutions.
 
 ---
 
 ## License
 
-This repository does not currently contain a verified open-source software license. All rights are reserved by the repository owner. Commercial usage, redistribution, or modification without explicit written authorization is prohibited.
+This project is licensed under the MIT License.
