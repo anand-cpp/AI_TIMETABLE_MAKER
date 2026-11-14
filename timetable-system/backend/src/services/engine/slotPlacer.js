@@ -285,6 +285,48 @@ const placeTheorySubject = (subject, classId, grid, data, randomize = false, opt
   const { allowOvertime = false, ignoreSameDay = false, includeSaturday = false } = options;
   const placed = [];
   
+  const teacherIds = (subject.teachers || []).map((t) => (t._id ? t._id.toString() : t.toString()));
+  const teacherNames = (subject.teachers || []).map((t) => t.name || '');
+
+  const subjectOverride = (adminOverrides.subjectOverrides || []).find(
+    (o) => o.subjectId === subject._id.toString() || o.subjectName === subject.name
+  );
+
+  const hasSmartRebalance = subjectOverride && (
+    subjectOverride.selectedOption?.includes('Smart Rebalance') ||
+    subjectOverride.selectedOption?.includes('Waiver') ||
+    subjectOverride.selectedOption?.includes('Allow')
+  );
+  const allowOvertimeEffective = allowOvertime || Boolean(hasSmartRebalance);
+  const ignoreSameDayEffective = ignoreSameDay || Boolean(hasSmartRebalance);
+  const includeSaturdayEffective = includeSaturday || Boolean(subjectOverride && subjectOverride.selectedOption?.includes('Saturday'));
+
+  // Perform smart workload rebalancing if teacher has heavy load on peak days
+  if (subjectOverride && subjectOverride.selectedOption?.includes('Smart Rebalance')) {
+    for (const [otherClassId, dMap] of Object.entries(grid)) {
+      if (otherClassId === classId) continue;
+      for (let p = 1; p <= 6; p++) {
+        const otherSlot = dMap['Wednesday']?.[p];
+        if (otherSlot && !otherSlot.isEmpty && !otherSlot.isBreak && !otherSlot.isLocked && !otherSlot.isLabBlock) {
+          const oTeachers = (otherSlot.teacherIds || []).map(id => id.toString());
+          if (teacherIds.some(tid => oTeachers.includes(tid))) {
+            for (const targetDay of ['Thursday', 'Friday']) {
+              for (let tp = 1; tp <= 6; tp++) {
+                const targetSlot = dMap[targetDay]?.[tp];
+                if (!targetSlot || targetSlot.isEmpty) {
+                  grid[otherClassId][targetDay][tp] = { ...otherSlot, day: targetDay, period: tp };
+                  grid[otherClassId]['Wednesday'][p] = { isEmpty: true, day: 'Wednesday', period: p };
+                  break;
+                }
+              }
+              if (grid[otherClassId]['Wednesday'][p]?.isEmpty) break;
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Calculate total required instructional periods
   const usesLTBreakdown = !!(subject.L || subject.T);
   const totalRequired = (subject.weeklyHours !== undefined && subject.weeklyHours !== null && subject.weeklyHours > 0)
@@ -292,13 +334,6 @@ const placeTheorySubject = (subject, classId, grid, data, randomize = false, opt
     : ((subject.L || 0) + (subject.T || 0) + (subject.P || 0));
   const alreadyPlaced = countPlacedForSubject(grid, classId, subject._id);
   let remaining = Math.max(0, totalRequired - alreadyPlaced);
-
-  const teacherIds = (subject.teachers || []).map((t) => (t._id ? t._id.toString() : t.toString()));
-  const teacherNames = (subject.teachers || []).map((t) => t.name || '');
-
-  const subjectOverride = (adminOverrides.subjectOverrides || []).find(
-    (o) => o.subjectId === subject._id.toString() || o.subjectName === subject.name
-  );
 
   // Feature A: Check if subject requires consecutive periods
   const requiresConsecutive = subject.requiresConsecutivePeriods && subject.consecutivePeriodsCount > 1;
@@ -460,7 +495,7 @@ const placeTheorySubject = (subject, classId, grid, data, randomize = false, opt
             break;
           }
           // Check teacher availability
-          if (!isSlotValid(classId, day, p, slotData, grid, data, { allowOvertime })) {
+          if (!isSlotValid(classId, day, p, slotData, grid, data, { allowOvertime: allowOvertimeEffective })) {
             canPlaceBlock = false;
             break;
           }
@@ -494,7 +529,7 @@ const placeTheorySubject = (subject, classId, grid, data, randomize = false, opt
         const cls = data.classMap?.[classId?.toString()];
         const isS8 = Boolean(cls?.semester === 8 || (cls?.name || '').includes('S8') || classId?.toString().includes('S8'));
         const subHours = subject.weeklyHours || 0;
-        const maxOnDay = (options.ignoreSameDay || isS8 || subHours >= 5) ? 2 : 1;
+        const maxOnDay = (options.ignoreSameDay || ignoreSameDayEffective || isS8 || subHours >= 5) ? 2 : 1;
         const countOnDay = placed.filter((p) => p.day === day).length +
           Object.values(grid[classId]?.[day] || {}).filter(
             s => s && !s.isEmpty && !s.isBreak && s.subjectType !== 'empty' && !s.isMinor && (s.subjectId?.toString() === subject._id.toString() || (s.subjectCode && s.subjectCode === subject.code && !s.isElective))
@@ -513,7 +548,7 @@ const placeTheorySubject = (subject, classId, grid, data, randomize = false, opt
           }
         }
 
-        if (!isSlotValid(classId, day, period, slotData, grid, data, { allowOvertime })) continue;
+        if (!isSlotValid(classId, day, period, slotData, grid, data, { allowOvertime: allowOvertimeEffective })) continue;
 
         grid[classId][day][period] = { ...slotData, day, period };
         placed.push({ day, period });
@@ -654,7 +689,26 @@ const placeLabSubject = (subject, classId, grid, data, randomize = false, option
     for (const roomCandidate of roomsToTry) {
       let candidates = [];
       
-      for (const day of allowedDays) {
+      // Balance teacher daily workload across the week (avoids clumping 4 periods on Wed while Thu/Fri are empty)
+      let sortedAllowedDays = [...allowedDays];
+      if (allTeacherIds.length > 0 && !mandatoryReservation) {
+        const teacherLoadsByDay = {};
+        for (const d of allowedDays) {
+          teacherLoadsByDay[d] = 0;
+          for (const [, dMap] of Object.entries(grid)) {
+            for (const [, s] of Object.entries(dMap[d] || {})) {
+              if (!s || s.isEmpty || s.isBreak) continue;
+              const sTeachers = (s.teacherIds || []).map(id => id.toString());
+              if (allTeacherIds.some(tid => sTeachers.includes(tid))) {
+                teacherLoadsByDay[d] = (teacherLoadsByDay[d] || 0) + 1;
+              }
+            }
+          }
+        }
+        sortedAllowedDays.sort((d1, d2) => (teacherLoadsByDay[d1] || 0) - (teacherLoadsByDay[d2] || 0));
+      }
+
+      for (const day of sortedAllowedDays) {
         // FRIDAY LAB PROHIBITION: No labs on Friday in ASET schedule (except authorized S8 Project)
         const isProj = subject.code === 'CSD416' || subject.code === 'CST416' || subject.name?.includes('Project Phase');
         if (day === 'Friday' && !isProj) {
@@ -1393,6 +1447,25 @@ const generatePermissionRequest = (subject, classObj, blockerType, data, grid) =
     : { Mon: '4/4', Tue: '4/4', Wed: '3/4', Thu: '4/4', Fri: '3/4', Sat: '—' };
 
   if (blockerType === 'TEACHER_OVERTIME') {
+    const maxDay = teacher.maxPeriodsPerDay || 4;
+    const maxWeek = teacher.maxPeriodsPerWeek || 20;
+    const assignedHours = teacherWorkload[teacherId]?.total || 0;
+    const daysObj = teacherWorkload[teacherId]?.days || {};
+    const monCount = daysObj.Monday || 0;
+    const tueCount = daysObj.Tuesday || 0;
+    const wedCount = daysObj.Wednesday || 0;
+    const thuCount = daysObj.Thursday || 0;
+    const friCount = daysObj.Friday || 0;
+
+    const hasFreeDays = thuCount === 0 || friCount === 0 || monCount === 0 || tueCount === 0;
+
+    let issueDescription = '';
+    if (hasFreeDays && assignedHours <= maxWeek) {
+      issueDescription = `${teacherName} has reached their daily ceiling of ${maxDay} teaching periods on peak day (Wednesday: ${wedCount}/${maxDay}), while Thursday (${thuCount}/${maxDay}) and Friday (${friCount}/${maxDay}) remain completely free. Total weekly load is ${assignedHours}/${maxWeek} hrs (well within weekly limit). Because ${classObj.name} is reserved for Capstone Project on Thu & Fri, Wednesday is the only scheduled class day. Rebalancing weekday loads or applying a 1-period waiver resolves this without Saturday classes.`;
+    } else {
+      issueDescription = `${teacherName} has ${assignedHours}/${maxWeek} weekly teaching hours assigned. Placing this required period for ${classObj.name} exceeds daily limit (${maxDay} periods/day) on available days.`;
+    }
+
     return {
       id: `req-${subject._id}-${Date.now()}`,
       requestType: 'TEACHER_OVERTIME',
@@ -1402,13 +1475,30 @@ const generatePermissionRequest = (subject, classObj, blockerType, data, grid) =
       subjectName: subject.name,
       classId: classObj._id.toString(),
       className: classObj.name,
-      issueDescription: `${teacherName} is assigned to teach ${subject.name} in multiple classes (total ${teacherWorkload[teacherId]?.total || 24} hrs/week). Their weekly limit is ${teacher.maxPeriodsPerWeek || 22} hrs. To place all required periods for ${classObj.name}, we need extra teaching periods this week.`,
+      issueDescription,
       currentLoad,
       options: [
-        { id: 'opt-1', label: 'Enable Saturday for this class (P1-P3 available) ⭐', isRecommended: true, impact: 'Schedules subject on Saturday morning' },
-        { id: 'opt-2', label: 'Allow up to 5 periods on Wed & Fri [+2 hrs]', impact: 'Relaxes daily limit from 4 to 5 on Wed and Fri' },
-        { id: 'opt-3', label: 'Reassign 1 section to co-faculty with capacity', impact: 'Reassigns subject to co-teacher' },
-        { id: 'opt-4', label: 'Split subject: 2 periods primary + 2 periods co-teacher', impact: 'Splits workload across two faculty members' },
+        {
+          id: 'opt-1',
+          label: '✨ Smart Rebalance: Shift non-S8 session to Thursday / Friday ⭐',
+          isRecommended: true,
+          impact: `Evenly redistributes ${teacherName}'s weekday teaching load to free days (${thuCount === 0 ? 'Thursday' : 'Friday'}), freeing Wednesday for ${classObj.name} without overtime or weekend classes.`,
+        },
+        {
+          id: 'opt-2',
+          label: `⚡ 1-Period Daily Waiver on Wednesday (Allow 5/${maxDay} periods)`,
+          impact: `Places subject on Wednesday with an authorized 1-hour flex; total weekly load remains at ${assignedHours + 1}/${maxWeek} hrs.`,
+        },
+        {
+          id: 'opt-3',
+          label: '👥 Co-Faculty Assistance: Reassign section to available department colleague',
+          impact: 'Delegates viva session to an available department colleague with capacity.',
+        },
+        {
+          id: 'opt-4',
+          label: '📅 Enable Saturday Morning Session (P1-P3) as makeup',
+          impact: 'Schedules subject on Saturday morning.',
+        },
       ],
       recommendedOptionId: 'opt-1',
     };
