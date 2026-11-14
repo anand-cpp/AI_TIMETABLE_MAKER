@@ -13,7 +13,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-export const computeRealisticScore = (version) => {
+const computeRealisticScore = (version) => {
   if (!version) return 100;
   const unplacedCount = version.unplacedSubjects?.length || 0;
   const hardViolationsCount = Math.max(
