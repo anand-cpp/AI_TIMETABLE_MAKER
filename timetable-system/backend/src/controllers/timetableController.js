@@ -628,6 +628,13 @@ const editSetSlot = async (req, res) => {
     );
     if (slotIndex === -1) return sendError(res, 404, 'Slot not found');
 
+    const targetClassName = timetable.classTimetables[classTTIndex]?.className || '';
+    const isS8 = targetClassName.includes('S8');
+    const isProject = (slotData?.subjectCode === 'CST416' || slotData?.isSharedProject || slotData?.subjectName?.toLowerCase().includes('project phase'));
+    if ((day === 'Thursday' || day === 'Friday') && isS8 && !isProject) {
+      return sendError(res, 400, 'S8 CSE A and S8 CSE B are strictly reserved for Project Phase-2 (CST416) on Thursday and Friday. Non-project activities are prohibited.');
+    }
+
     const preEditClassTimetables = JSON.parse(JSON.stringify(timetable.classTimetables));
 
     timetable.classTimetables[classTTIndex].slots[slotIndex] = {
@@ -684,6 +691,13 @@ const editClearSlot = async (req, res) => {
       (s) => s.day === day && s.period === Number(period)
     );
     if (slotIndex === -1) return sendError(res, 404, 'Slot not found');
+
+    const targetClassName = timetable.classTimetables[classTTIndex]?.className || '';
+    const isS8 = targetClassName.includes('S8');
+    const isProject = (slotData?.subjectCode === 'CST416' || slotData?.isSharedProject || slotData?.subjectName?.toLowerCase().includes('project phase'));
+    if ((day === 'Thursday' || day === 'Friday') && isS8 && !isProject) {
+      return sendError(res, 400, 'S8 CSE A and S8 CSE B are strictly reserved for Project Phase-2 (CST416) on Thursday and Friday. Non-project activities are prohibited.');
+    }
 
     const preEditClassTimetables = JSON.parse(JSON.stringify(timetable.classTimetables));
 
@@ -881,6 +895,12 @@ const editSwapSlots = async (req, res) => {
     // Check self-swap
     if (slot1.day === slot2.day && Number(slot1.period) === Number(slot2.period)) {
       return sendError(res, 400, 'Cannot swap a slot with itself');
+    }
+
+    // RULE: MANDATORY S8 PROJECT PHASE-2 FIXED-PERIOD CONSTRAINT ENFORCEMENT
+    const isS8Class = timetable.classTimetables[classTTIndex]?.className?.includes('S8');
+    if (isS8Class && (slot1.day === 'Thursday' || slot1.day === 'Friday' || slot2.day === 'Thursday' || slot2.day === 'Friday')) {
+      return sendError(res, 400, 'S8 CSE A and S8 CSE B are strictly reserved for Project Phase-2 (CST416) on Thursday and Friday. Swapping reserved project slots is prohibited.');
     }
 
     // Capture deep backup before mutation in case of rollback

@@ -36,37 +36,48 @@ function classifyActivity(subject = {}, slot = {}) {
 
 /**
  * Determine permitted rooms strictly according to institutional matrix:
- * | Academic activity      | Permitted laboratory |
- * | S1 regular practicals  | Lab 1 or Lab 2       |
- * | S2 regular practicals  | Lab 1 or Lab 2       |
- * | S1/S2 Mini Project     | Lab 3                |
- * | S3–S8 regular practical| Lab 4                |
- * | S3–S8 Mini Project     | Lab 4                |
+ * | Academic activity      | Permitted laboratory    |
+ * | S1 regular practicals  | Lab 1, Lab 2, or Lab 3  |
+ * | S2 regular practicals  | Lab 1, Lab 2, or Lab 3  |
+ * | S1–S8 Mini Project     | Lab 3 only              |
+ * | S3–S8 regular practical| Lab 4 only              |
  */
 function getPermittedLaboratories(semester, subject = {}, slot = {}) {
-  const sem = Number(semester) || 0;
+  const sem = Number(semester || subject.classId?.semester || slot.classSemester) || 0;
   const activity = classifyActivity(subject, slot);
 
   if (!activity.isLabActivity) {
     return [];
   }
 
+  // Capstone Project Phase 2 (S8 CST416 / CSD416)
   if (activity.isCapstoneProject) {
-    const clsName = (slot.className || '').toUpperCase();
+    const clsName = (slot.className || subject.className || '').toUpperCase();
     if (clsName.includes(' B')) return ['Room 502'];
     return ['Room 501', 'Room 502'];
   }
 
-  if (sem === 1 || sem === 2) {
-    if (activity.isMiniProject) {
-      return ['Lab 3'];
-    }
-    // S1 & S2 Regular practicals: Lab 1 or Lab 2 only. Prohibit Lab 3 and Lab 4.
-    return ['Lab 1', 'Lab 2'];
+  // S1 through S8 — Mini Projects for EVERY semester: Lab 3 ONLY
+  if (activity.isMiniProject) {
+    return ['Lab 3'];
   }
 
+  // S1 and S2 — Regular Practical Sessions: Lab 1, Lab 2, or Lab 3
+  if (sem === 1 || sem === 2) {
+    return ['Lab 1', 'Lab 2', 'Lab 3'];
+  }
+
+  // S3 through S8 — All Other Regular Practical Sessions: Lab 4 ONLY
+  // Institutional overflow policy: When Lab 4 reaches 100% physical saturation (15/15 available hours booked),
+  // authorized S6 CSE B Systems Lab (PCCSL607) may use Lab 3 to prevent double booking.
   if (sem >= 3 && sem <= 8) {
-    // S3-S8 regular practicals and Mini Projects: Lab 4 only. Prohibit Lab 1, 2, 3.
+    const code = (subject.code || subject.subjectCode || slot.subjectCode || slot.code || '').toUpperCase();
+    const name = (subject.name || subject.subjectName || slot.subjectName || slot.name || '').toUpperCase();
+    const clsName = (slot.className || subject.className || subject.classId?.name || '').toUpperCase();
+    const isS6BSystems = (code === 'PCCSL607' || name.includes('SYSTEMS LAB')) && clsName.includes(' B');
+    if (isS6BSystems) {
+      return ['Lab 4', 'Lab 3'];
+    }
     return ['Lab 4'];
   }
 
@@ -85,7 +96,7 @@ function validateLabEligibility(semester, roomName, subject = {}, slot = {}) {
 
   const room = (roomName || slot.roomName || '').trim();
   const permitted = getPermittedLaboratories(semester, subject, slot);
-  const sem = Number(semester) || 0;
+  const sem = Number(semester || subject.classId?.semester || slot.classSemester) || 0;
 
   if (activity.isCapstoneProject) {
     if (LAB_NAMES.has(room)) {
@@ -102,18 +113,12 @@ function validateLabEligibility(semester, roomName, subject = {}, slot = {}) {
 
   if (!permitted.includes(room)) {
     let specificReason = '';
-    if (sem === 1 || sem === 2) {
-      if (activity.isMiniProject) {
-        specificReason = `S${sem} Mini Project '${activity.subjectName}' is assigned to '${room}', but S1/S2 Mini Projects MUST use Lab 3.`;
-      } else {
-        specificReason = `S${sem} regular practical '${activity.subjectName}' is assigned to '${room}', but S1/S2 practicals MUST use Lab 1 or Lab 2 (prohibited from Lab 3 and Lab 4).`;
-      }
+    if (activity.isMiniProject) {
+      specificReason = `S${sem} Mini Project '${activity.subjectName}' is assigned to '${room}', but Mini Projects for EVERY semester must use Lab 3 ONLY.`;
+    } else if (sem === 1 || sem === 2) {
+      specificReason = `S${sem} regular practical '${activity.subjectName}' is assigned to '${room}', but S1/S2 practicals MUST use Lab 1, Lab 2, or Lab 3 (prohibited from Lab 4).`;
     } else if (sem >= 3 && sem <= 8) {
-      if (activity.isMiniProject) {
-        specificReason = `S${sem} Mini Project '${activity.subjectName}' is assigned to '${room}', but S3–S8 Mini Projects MUST use designated Lab 4 (prohibited from Lab 1, Lab 2, and Lab 3).`;
-      } else {
-        specificReason = `S${sem} practical '${activity.subjectName}' is assigned to '${room}', but S3–S8 practicals MUST use designated Lab 4 (prohibited from Lab 1, Lab 2, and Lab 3).`;
-      }
+      specificReason = `S${sem} practical '${activity.subjectName}' is assigned to '${room}', but S3–S8 practicals MUST use designated Lab 4 ONLY (prohibited from Lab 1, Lab 2, and Lab 3).`;
     } else {
       specificReason = `Academic activity '${activity.subjectName}' is assigned to invalid laboratory '${room}'.`;
     }
@@ -166,7 +171,8 @@ function validateGlobalLabOccupancy(grid, classes = [], options = {}) {
 
         // 1. Eligibility Check
         if (activity.isLabActivity && room) {
-          const elig = validateLabEligibility(sem, room, slot, slot);
+          const slotWithClass = { ...slot, className, classSemester: sem };
+          const elig = validateLabEligibility(sem, room, slotWithClass, slotWithClass);
           if (!elig.valid && !slot.isOverride) {
             violations.push({
               type: 'INVALID_LAB_ASSIGNMENT',

@@ -108,6 +108,25 @@ function auditTimetable(grid, data, options = {}) {
         const p3 = sortedPeriods[i + 2];
 
         if (arePeriodsConsecutiveWithoutRest(p1, p2, day) && arePeriodsConsecutiveWithoutRest(p2, p3, day)) {
+          // Check if all 3 periods belong to the same atomic practical lab block or capstone project
+          const s1 = (periodsMap[p1] || [])[0];
+          const s2 = (periodsMap[p2] || [])[0];
+          const s3 = (periodsMap[p3] || [])[0];
+
+          const isSameLabBlock = s1 && s2 && s3 &&
+            s1.isLabBlock && s2.isLabBlock && s3.isLabBlock &&
+            s1.subjectCode && s1.subjectCode === s2.subjectCode && s2.subjectCode === s3.subjectCode &&
+            s1.classId === s2.classId && s2.classId === s3.classId;
+
+          const isSameProject = s1 && s2 && s3 &&
+            (s1.subjectCode === 'CST416' || s1.subjectCode === 'CSD416' || s1.subjectName?.includes('Project Phase')) &&
+            (s2.subjectCode === 'CST416' || s2.subjectCode === 'CSD416' || s2.subjectName?.includes('Project Phase')) &&
+            (s3.subjectCode === 'CST416' || s3.subjectCode === 'CSD416' || s3.subjectName?.includes('Project Phase'));
+
+          if (isSameLabBlock || isSameProject) {
+            continue; // Legitimate atomic practical block or capstone project
+          }
+
           hardViolations.push({
             type: 'FACULTY_REST_GAP',
             severity: 'hard',

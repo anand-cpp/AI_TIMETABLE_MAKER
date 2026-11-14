@@ -118,8 +118,8 @@ const scoreGrid = (grid, data, validationResult = null) => {
       for (let p = 1; p <= 6; p++) {
         const slotA = grid[s4aId][day]?.[p];
         const slotB = grid[s4bId][day]?.[p];
-        const isElcA = slotA?.isElective;
-        const isElcB = slotB?.isElective;
+        const isElcA = !!slotA?.isElective;
+        const isElcB = !!slotB?.isElective;
         if (isElcA !== isElcB) {
           electiveSyncIssues.push(`S4 Elective mismatch on ${day} P${p}`);
         }
@@ -131,17 +131,15 @@ const scoreGrid = (grid, data, validationResult = null) => {
   const s6aId = '6aeccf3cbb1e84200c3db01d';
   const s6bId = '6aeccf3cbb1e84200c3db01e';
   if (grid[s6aId] && grid[s6bId]) {
-    const fixedS6 = [
-      { day: 'Monday', period: 3 },
-      { day: 'Tuesday', period: 3 },
-      { day: 'Wednesday', period: 3 },
-      { day: 'Thursday', period: 6 },
-    ];
-    for (const fs of fixedS6) {
-      const sA = grid[s6aId][fs.day]?.[fs.period];
-      const sB = grid[s6bId][fs.day]?.[fs.period];
-      if (!sA?.isElective || !sB?.isElective) {
-        electiveSyncIssues.push(`S6 Fixed Elective missing on ${fs.day} P${fs.period}`);
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+      for (let p = 1; p <= 6; p++) {
+        const slotA = grid[s6aId][day]?.[p];
+        const slotB = grid[s6bId][day]?.[p];
+        const isElcA = !!slotA?.isElective;
+        const isElcB = !!slotB?.isElective;
+        if (isElcA !== isElcB) {
+          electiveSyncIssues.push(`S6 Elective mismatch on ${day} P${p}`);
+        }
       }
     }
   }
@@ -154,7 +152,7 @@ const scoreGrid = (grid, data, validationResult = null) => {
       for (let p = 1; p <= 6; p++) {
         const sA = grid[s8aId][day]?.[p];
         const sB = grid[s8bId][day]?.[p];
-        if (sA?.isElective !== sB?.isElective) {
+        if (!!sA?.isElective !== !!sB?.isElective) {
           electiveSyncIssues.push(`S8 Elective mismatch on ${day} P${p}`);
         }
       }

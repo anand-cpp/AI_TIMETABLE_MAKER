@@ -348,14 +348,33 @@ async function generateTimetableDiagnostics(timetable, customData = null) {
         if (isConsecutive) {
           run.push(p);
         } else {
-          if (run.length > 2) {
-            recordRestGapConflict(t, day, run, periodAssignments);
-          }
+          checkAndRecordRestGap(run);
           run = [p];
         }
       }
-      if (run.length > 2) {
-        recordRestGapConflict(t, day, run, periodAssignments);
+      checkAndRecordRestGap(run);
+
+      function checkAndRecordRestGap(r) {
+        if (!r || r.length <= 2) return;
+        // Check if this run is an atomic continuous lab block or project session
+        const isContinuousPracticalSession = r.every(p => {
+          const slot = periodAssignments[p]?.[0]?.slot;
+          if (!slot) return false;
+          const code = (slot.subjectCode || '').toUpperCase();
+          const isProj = code === 'CST416' || code === 'CSD416' || /project/i.test(slot.subjectName || '');
+          const isLab = !!(slot.isLabBlock || slot.subjectType === 'lab');
+          return isProj || isLab;
+        });
+
+        const firstSlot = periodAssignments[r[0]]?.[0]?.slot;
+        const allSameActivity = r.every(p => {
+          const s = periodAssignments[p]?.[0]?.slot;
+          return s && s.subjectCode === firstSlot?.subjectCode && periodAssignments[p]?.[0]?.classId === periodAssignments[r[0]]?.[0]?.classId;
+        });
+
+        if (!(isContinuousPracticalSession && allSameActivity)) {
+          recordRestGapConflict(t, day, r, periodAssignments);
+        }
       }
     }
   }
@@ -406,23 +425,31 @@ async function generateTimetableDiagnostics(timetable, customData = null) {
         if (!room.toLowerCase().startsWith('lab')) continue;
 
         const isProjectPhase2 = (slot.subjectCode || '').toUpperCase() === 'CST416' || (slot.subjectCode || '').toUpperCase() === 'CSD416' || (slot.subjectName || '').toLowerCase().includes('project phase');
+        const isMiniProject = (slot.subjectCode || '').toUpperCase() === 'PCCSP608' || (slot.subjectName || '').toLowerCase().includes('mini project');
 
         let isInvalid = false;
         let expected = '';
-        if (sem === 1 || sem === 2) {
-          if (room === 'Lab 4') {
+        if (isProjectPhase2) {
+          if (['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'].includes(room)) {
+            isInvalid = true;
+            expected = 'Departmental Classrooms (Room 501 / Room 502) without locking physical laboratory resources';
+          }
+        } else if (isMiniProject) {
+          if (room !== 'Lab 3') {
+            isInvalid = true;
+            expected = 'Lab 3 only';
+          }
+        } else if (sem === 1 || sem === 2) {
+          if (!['Lab 1', 'Lab 2', 'Lab 3'].includes(room)) {
             isInvalid = true;
             expected = 'Lab 1, Lab 2, or Lab 3';
           }
         } else if (sem >= 3 && sem <= 8) {
-          if (isProjectPhase2) {
-            if (['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'].includes(room)) {
-              isInvalid = true;
-              expected = 'Departmental Classrooms (Room 501 / Room 502) without locking physical laboratory resources';
-            }
-          } else if (room !== 'Lab 4') {
+          const isS6BSystems = (slot.subjectCode === 'PCCSL607' || slot.subjectName?.includes('Systems Lab')) && (cls?.name || '').includes(' B');
+          const permitted = isS6BSystems ? ['Lab 4', 'Lab 3'] : ['Lab 4'];
+          if (!permitted.includes(room)) {
             isInvalid = true;
-            expected = 'Lab 4';
+            expected = isS6BSystems ? 'Lab 4 (or Lab 3 overflow)' : 'Lab 4 only';
           }
         }
 

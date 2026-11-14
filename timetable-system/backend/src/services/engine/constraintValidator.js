@@ -125,6 +125,7 @@ const validateGrid = (grid, data) => {
     timeline,
     fridayTimeline,
     adminOverrides = {},
+    classMap = {},
   } = data;
 
   const teacherDailyLimitOverrides = adminOverrides.teacherDailyLimitOverrides || {};
@@ -230,6 +231,32 @@ const validateGrid = (grid, data) => {
               }
             }
           }
+
+          // Faculty Availability: Dr S Gunasekaran is strictly reserved for S8 Project Phase-2 on Thursday and Friday
+          const isGunasekaran = (teacher && (teacher.name?.includes('Gunasekaran') || teacherId === '6aeccf3cbb1e84200c3db02b'));
+          if (isGunasekaran && (day === 'Thursday' || day === 'Friday')) {
+            const isProject = (slot.subjectCode === 'CST416' || slot.subjectCode === 'CSD416' || slot.isSharedProject || (slot.subjectName && slot.subjectName.toLowerCase().includes('project phase')));
+            if (!isProject) {
+              violations.push({
+                type: 'TEACHER_UNAVAILABLE',
+                message: `Teacher ${teacher?.name || 'Dr S Gunasekaran'} is strictly reserved for Project Phase-2 (CST416) on ${day} and cannot teach '${slot.subjectName || slot.subjectCode}' in ${classId}`,
+                teacherId, day, period, classId,
+              });
+            }
+          }
+        }
+
+        // Section Availability: S8 CSE A & S8 CSE B are strictly reserved for Project Phase-2 on Thursday and Friday
+        const isS8Class = (classId === '6aeccf3cbb1e84200c3db01f' || classId === '6aeccf3cbb1e84200c3db020' || (classMap[classId] && classMap[classId].name && classMap[classId].name.includes('S8 CSE')));
+        if (isS8Class && (day === 'Thursday' || day === 'Friday')) {
+          const isProject = (slot.subjectCode === 'CST416' || slot.subjectCode === 'CSD416' || slot.isSharedProject || (slot.subjectName && slot.subjectName.toLowerCase().includes('project phase')));
+          if (!isProject) {
+            violations.push({
+              type: 'FIXED_SLOT_VIOLATION',
+              message: `Class ${classMap[classId]?.name || classId} is strictly reserved for Project Phase-2 (CST416) on ${day} period ${period}. Non-project activity '${slot.subjectName || slot.subjectCode}' is prohibited.`,
+              classId, day, period,
+            });
+          }
         }
 
         // 5. Lab room double-booking
@@ -273,7 +300,9 @@ const validateGrid = (grid, data) => {
           let allowedRooms = [];
           if (Array.isArray(subjectAllowed) && subjectAllowed.length > 0) {
             allowedRooms = subjectAllowed;
-          } else if (classSem === 2 || isProject) {
+          } else if (isProject) {
+            allowedRooms = ['Room 501', 'Room 502', 'Lab 3', 'Lab 4', 'Lab 1', 'Lab 2'];
+          } else if (classSem === 2) {
             allowedRooms = ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'];
           } else {
             allowedRooms = ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'];
@@ -430,7 +459,6 @@ const validateGrid = (grid, data) => {
   // S6 Open Elective strict allowed periods validation:
   // ONLY Monday P3, Tuesday P3, Wednesday P3, Thursday P6 are allowed.
   const S6_OE_ALLOWED = new Set(['Monday|3', 'Tuesday|3', 'Wednesday|3', 'Thursday|6']);
-  const classMap = data.classMap || {};
   for (const [classId, dayMap] of Object.entries(grid)) {
     const cls = classMap[classId];
     for (const [day, periodMap] of Object.entries(dayMap)) {
@@ -974,6 +1002,18 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
 
   if (!teachingPeriods.includes(period)) return false;
 
+  // S8 Fixed Project Phase-2 hard constraint on Thursday & Friday
+  const isS8 = (classId === '6aeccf3cbb1e84200c3db01f' || classId === '6aeccf3cbb1e84200c3db020' || data.classMap?.[classId]?.name?.includes('S8 CSE'));
+  const isProjectActivity = (slot.subjectCode === 'CST416' || slot.subjectCode === 'CSD416' || slot.isSharedProject || slot.subjectName?.toLowerCase().includes('project phase'));
+  if (day === 'Thursday' || day === 'Friday') {
+    if (isS8 && !isProjectActivity) return false;
+    const teachesSlot = slotTeacherIds(slot).some(tid => {
+      const t = teacherMap[tid];
+      return tid === '6aeccf3cbb1e84200c3db02b' || t?.name?.includes('Gunasekaran');
+    });
+    if (teachesSlot && !isProjectActivity) return false;
+  }
+
   // Check Daily Subject Uniqueness (Rule 2 & Rule 3)
   if (!isDailyUniquenessExempt(slot) && grid[classId]?.[day]) {
     const targetKey = (slot.isElective && (slot.electiveGroupId || slot.linkedGroupId))
@@ -1108,7 +1148,18 @@ const isLabBlockValid = (classId, day, startPeriod, duration, slot, grid, data, 
   return true;
 };
 
+function arePeriodsConsecutiveWithoutRest(p1, p2, day) {
+  if (p2 !== p1 + 1) return false;
+  if (day === 'Friday') {
+    if (p1 === 4 && p2 === 5) return false;
+  } else {
+    if (p1 === 3 && p2 === 4) return false;
+  }
+  return true;
+}
+
 module.exports = {
+  arePeriodsConsecutiveWithoutRest,
   isPhase2Project,
   isLaboratory,
   isDailyUniquenessExempt,

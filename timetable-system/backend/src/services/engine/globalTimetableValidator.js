@@ -231,28 +231,28 @@ function validateGlobalTimetable(gridOrTimetable, data, options = {}) {
   for (const s8c of s8Classes) {
     const cid = s8c._id.toString();
     const cname = s8c.name;
+    const isSecA = s8c.section === 'A' || cname.includes(' A');
+    const targetDay = isSecA ? 'Thursday' : 'Friday';
 
-    for (const day of ['Thursday', 'Friday']) {
-      for (let p = 1; p <= 6; p++) {
-        report.projectChecks.total++;
-        const slot = grid[cid]?.[day]?.[p];
-        const isProject = slot && (slot.subjectCode === 'CST416' || slot.subjectCode === 'CSD416' || slot.subjectName?.includes('Project Phase'));
-        const hasGuna = slot && (slot.teacherNames || []).some(n => n.includes('Gunasekaran'));
+    for (let p = 1; p <= 6; p++) {
+      report.projectChecks.total++;
+      const slot = grid[cid]?.[targetDay]?.[p];
+      const isProject = slot && (slot.subjectCode === 'CST416' || slot.subjectCode === 'CSD416' || slot.subjectName?.includes('Project Phase'));
+      const hasGuna = slot && (slot.teacherNames || []).some(n => n.includes('Gunasekaran'));
 
-        if (isProject && hasGuna) {
-          report.projectChecks.passed++;
-        } else {
-          report.projectChecks.failed++;
-          violations.push({
-            code: 'INVALID_PROJECT_SCHEDULE',
-            severity: 'hard',
-            classId: cid,
-            className: cname,
-            day,
-            period: p,
-            message: `S8 Project Phase-2 must be scheduled on ${day} P${p} under Dr. S. Gunasekaran for ${cname}`,
-          });
-        }
+      if (isProject && hasGuna) {
+        report.projectChecks.passed++;
+      } else {
+        report.projectChecks.failed++;
+        violations.push({
+          code: 'INVALID_PROJECT_SCHEDULE',
+          severity: 'hard',
+          classId: cid,
+          className: cname,
+          day: targetDay,
+          period: p,
+          message: `S8 Project Phase-2 must be scheduled on ${targetDay} P${p} under Dr. S. Gunasekaran for ${cname}`,
+        });
       }
     }
   }
