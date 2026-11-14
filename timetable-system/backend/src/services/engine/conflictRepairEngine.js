@@ -286,10 +286,13 @@ function runConflictRepair(initialGrid, data, options = {}) {
           if (slot && slot.isLabBlock && (slot.teacherIds || []).map((id) => id.toString()).includes(teacherId)) {
             const sub = (data.subjects || []).find((s) => s._id.toString() === (slot.subjectId || '').toString());
             const coIds = (sub?.coInstructors || []).map((c) => (c._id ? c._id.toString() : c.toString()));
+            const availableTids = (slot.teacherIds || []).map((id) => id.toString());
 
-            if (coIds.length > 0) {
-              const primaryId = (slot.teacherIds || [])[0]?.toString();
-              const coId = coIds[0];
+            if (availableTids.length >= 2 || coIds.length > 0) {
+              const primaryId = availableTids[0];
+              const coId = availableTids.length >= 2 ? availableTids[1] : coIds[0];
+              const primaryName = (slot.teacherNames || [])[0] || 'Faculty';
+              const coName = (slot.teacherNames || [])[1] || 'Co-Faculty';
 
               // Stagger presence: P1: Primary, P2: Both, P3: Co-instructor
               const rollbackState = cloneGrid(currentGrid);
@@ -301,10 +304,13 @@ function runConflictRepair(initialGrid, data, options = {}) {
                 if (sl && sl.isLabBlock) {
                   if (off === 0) {
                     sl.teacherIds = [primaryId];
+                    sl.teacherNames = [primaryName];
                   } else if (off === 1) {
                     sl.teacherIds = [primaryId, coId];
+                    sl.teacherNames = [primaryName, coName];
                   } else if (off === 2) {
                     sl.teacherIds = [coId];
+                    sl.teacherNames = [coName];
                   }
                 }
               }

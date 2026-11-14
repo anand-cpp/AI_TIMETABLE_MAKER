@@ -16,18 +16,29 @@ import {
 export const computeRealisticScore = (version) => {
   if (!version) return 100;
   const unplacedCount = version.unplacedSubjects?.length || 0;
-  const hardViolationsCount = version.generationStats?.hardViolations ?? (version.validationChecks?.hardViolationsCount || 0);
-  const softViolationsCount = version.generationStats?.softViolations ?? (version.warnings?.length || 0);
+  const hardViolationsCount = Math.max(
+    version.generationStats?.hardViolations || 0,
+    version.validationChecks?.hardViolationsCount || 0
+  );
+  const softViolationsCount = Math.max(
+    version.generationStats?.softViolations || 0,
+    version.warnings?.length || 0
+  );
 
-  // Critical failure: hard conflicts prevent a passing score
+  // Critical failure: hard conflicts strictly cap score at <= 48
   if (hardViolationsCount > 0) {
     return Math.max(15, 48 - (hardViolationsCount - 1) * 4);
   }
 
-  // Deduct for soft warnings, unplaced subjects, and optimization flaws
-  const softPenalty = Math.round(softViolationsCount * 0.6);
+  // Deduct for soft warnings and unplaced subjects
+  const softPenalty = Math.max(softViolationsCount > 0 ? 6 : 0, Math.round(softViolationsCount * 0.6));
   const unplacedPenalty = unplacedCount * 10;
   let score = Math.max(20, Math.min(100, 100 - softPenalty - unplacedPenalty));
+
+  // Cap at 94 if any soft warnings exist - never award 100/100 when issues exist!
+  if (softViolationsCount > 0 && score > 94) {
+    score = 94;
+  }
 
   // If a lower score was computed by backend breakdown, respect that lower score
   if (typeof version.qualityScore?.overall === 'number' && version.qualityScore.overall < score) {
@@ -91,8 +102,14 @@ const VersionHistory = ({
         const isActive = version._id === activeVersionId;
         const isAccepted = version.isAccepted;
         const hasUnplaced = (version.unplacedSubjects?.length || 0) > 0;
-        const hardViolationsCount = version.generationStats?.hardViolations ?? (version.validationChecks?.hardViolationsCount || 0);
-        const softViolationsCount = version.generationStats?.softViolations ?? (version.warnings?.length || 0);
+        const hardViolationsCount = Math.max(
+          version.generationStats?.hardViolations || 0,
+          version.validationChecks?.hardViolationsCount || 0
+        );
+        const softViolationsCount = Math.max(
+          version.generationStats?.softViolations || 0,
+          version.warnings?.length || 0
+        );
 
         // Realistic Quality Score: Never give 100/100 if there are warnings or hard conflicts
         const score = computeRealisticScore(version);

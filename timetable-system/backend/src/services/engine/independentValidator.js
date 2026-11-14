@@ -160,9 +160,41 @@ function auditTimetable(grid, data, options = {}) {
     for (const [classId, dayMap] of Object.entries(grid || {})) {
       for (const [day, periodMap] of Object.entries(dayMap || {})) {
         for (const [periodStr, slot] of Object.entries(periodMap || {})) {
-          if (!slot || slot.isEmpty || slot.isBreak || !slot.subjectId) continue;
-          const sid = slot.subjectId.toString();
-          placedHoursBySubject[sid] = (placedHoursBySubject[sid] || 0) + 1;
+          if (!slot || slot.isEmpty || slot.isBreak) continue;
+          if (slot.subjectId) {
+            const sid = slot.subjectId.toString();
+            placedHoursBySubject[sid] = (placedHoursBySubject[sid] || 0) + 1;
+          }
+          // Account for elective group options (e.g. S8 PE-3, PE-4, PE-5 groups)
+          if (slot.isElective && slot.electiveGroupId) {
+            const slotGid = slot.electiveGroupId.toString();
+            for (const sub of subjects) {
+              const subGid = (sub.electiveDetails?.electiveGroupId?._id || sub.electiveDetails?.electiveGroupId || '').toString();
+              if (subGid === slotGid && (!slot.subjectId || slot.subjectId.toString() !== sub._id.toString())) {
+                placedHoursBySubject[sub._id.toString()] = (placedHoursBySubject[sub._id.toString()] || 0) + 1;
+              }
+            }
+            if (Array.isArray(data.electiveGroups)) {
+              const grp = data.electiveGroups.find(g => g._id.toString() === slot.electiveGroupId.toString());
+              if (grp && Array.isArray(grp.options)) {
+                for (const opt of grp.options) {
+                  const optSid = (opt.subjectId?._id || opt.subjectId || '').toString();
+                  if (optSid && optSid !== slot.subjectId?.toString()) {
+                    placedHoursBySubject[optSid] = (placedHoursBySubject[optSid] || 0) + 1;
+                  }
+                }
+              }
+            }
+          }
+          // Account for co-offered elective options in composite subject codes (e.g. PECST411 / PECST419)
+          if (slot.subjectCode && slot.subjectCode.includes('/')) {
+            const codes = slot.subjectCode.split('/').map(c => c.trim());
+            for (const sub of subjects) {
+              if (codes.includes(sub.code) && (!slot.subjectId || slot.subjectId.toString() !== sub._id.toString())) {
+                placedHoursBySubject[sub._id.toString()] = (placedHoursBySubject[sub._id.toString()] || 0) + 1;
+              }
+            }
+          }
           totalScheduledHours++;
         }
       }

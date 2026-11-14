@@ -143,13 +143,14 @@ const isS6ElectiveReserved = (subject, classId, day, period) => {
 const isS8ProjectReserved = (subject, classId, day, period, data = {}) => {
   if (!subject || !classId) return false;
   const isProject = subject.code === 'CSD416' || subject.code === 'CST416' || subject.name?.includes('Project Phase');
-  if (!isProject) return false;
   const cls = data.classMap?.[classId.toString()];
   const isS8 = cls?.semester === 8 || classId.toString().includes('S8');
   if (!isS8) return false;
   const section = cls?.section || (cls?.name?.includes(' A') ? 'A' : (cls?.name?.includes(' B') ? 'B' : null));
-  if (section === 'A' && day === 'Thursday' && period >= 1 && period <= 6) return true;
-  if (section === 'B' && day === 'Friday' && period >= 1 && period <= 6) return true;
+  if (!isProject) {
+    if (section === 'A' && day === 'Thursday') return true;
+    if (section === 'B' && day === 'Friday') return true;
+  }
   return false;
 };
 
@@ -445,13 +446,14 @@ const placeTheorySubject = (subject, classId, grid, data, randomize = false, opt
       }
     }
 
-    // Sort days to prioritize days with lowest teacher workload (splits workload evenly)
+    // Sort days to prioritize days with lowest teacher workload (splits workload evenly across all working days)
     const sortedDays = [...daysToSearch].sort((d1, d2) => {
+      const load1 = (teacherDailyLoads[d1] || 0) + ((teacherDailyLoads[d1] || 0) >= 3 ? 10 : 0);
+      const load2 = (teacherDailyLoads[d2] || 0) + ((teacherDailyLoads[d2] || 0) >= 3 ? 10 : 0);
       if (randomize) {
-        return ((teacherDailyLoads[d1] || 0) + Math.random() * 0.9) - ((teacherDailyLoads[d2] || 0) + Math.random() * 0.9);
+        return (load1 + Math.random() * 0.9) - (load2 + Math.random() * 0.9);
       }
-      const diff = (teacherDailyLoads[d1] || 0) - (teacherDailyLoads[d2] || 0);
-      return diff;
+      return load1 - load2;
     });
 
     let candidates = [];
@@ -529,7 +531,7 @@ const placeTheorySubject = (subject, classId, grid, data, randomize = false, opt
         const cls = data.classMap?.[classId?.toString()];
         const isS8 = Boolean(cls?.semester === 8 || (cls?.name || '').includes('S8') || classId?.toString().includes('S8'));
         const subHours = subject.weeklyHours || 0;
-        const maxOnDay = (options.ignoreSameDay || ignoreSameDayEffective || isS8 || subHours >= 5) ? 2 : 1;
+        const maxOnDay = (options.ignoreSameDay || ignoreSameDayEffective || isS8 || subHours > 5) ? 2 : 1;
         const countOnDay = placed.filter((p) => p.day === day).length +
           Object.values(grid[classId]?.[day] || {}).filter(
             s => s && !s.isEmpty && !s.isBreak && s.subjectType !== 'empty' && !s.isMinor && (s.subjectId?.toString() === subject._id.toString() || (s.subjectCode && s.subjectCode === subject.code && !s.isElective))
@@ -1614,7 +1616,7 @@ const placeAllSubjects = (data, randomize = false, options = {}) => {
   // Phase 0: Mandatory Fixed Placements (Hard Constraints)
   const fixedPlacedCounts = {}; // subjectId -> count
 
-  // Phase 0A: Pre-place Authoritative S8 Project Phase-2 Blocks (12 hours: Thursday P1–P6 & Friday P1–P6)
+  // Phase 0A: Pre-place Authoritative S8 Project Phase-2 Blocks (6 hours: S8 CSE A on Thursday P1–P6, S8 CSE B on Friday P1–P6)
   const s8ProjectSubs = subjects.filter(s => (s.code === 'CST416' || s.code === 'CSD416' || s.name?.includes('Project Phase')));
   for (const projSub of s8ProjectSubs) {
     const cid = projSub.classId?._id ? projSub.classId._id.toString() : projSub.classId?.toString();
@@ -1622,51 +1624,50 @@ const placeAllSubjects = (data, randomize = false, options = {}) => {
     if (!classObj) continue;
     const isSecA = classObj.section === 'A' || classObj.name?.includes(' A');
     const projectRoom = isSecA ? 'Room 501' : 'Room 502';
+    const targetDay = isSecA ? 'Thursday' : 'Friday';
     const teacherIds = (projSub.teachers || []).map(t => (t._id ? t._id.toString() : t.toString()));
     const teacherNames = (projSub.teachers || []).map(t => t.name || 'Dr S Gunasekaran');
     const periods = [1, 2, 3, 4, 5, 6];
 
-    for (const targetDay of ['Thursday', 'Friday']) {
-      for (let idx = 0; idx < periods.length; idx++) {
-        const p = periods[idx];
-        let slotTeachers = teacherIds;
-        let slotTeacherNames = teacherNames;
-        if (targetDay === 'Friday') {
-          if (p === 3 || p === 4) {
-            slotTeachers = [];
-            slotTeacherNames = ['Project Committee'];
-          }
-        } else {
-          if (p === 3 || p === 6) {
-            slotTeachers = [];
-            slotTeacherNames = ['Project Committee'];
-          }
+    for (let idx = 0; idx < periods.length; idx++) {
+      const p = periods[idx];
+      let slotTeachers = teacherIds;
+      let slotTeacherNames = teacherNames;
+      if (targetDay === 'Friday') {
+        if (p === 3 || p === 4) {
+          slotTeachers = [];
+          slotTeacherNames = ['Project Committee'];
         }
-        grid[cid][targetDay][p] = {
-          day: targetDay,
-          period: p,
-          subjectId: projSub._id.toString(),
-          subjectName: projSub.name,
-          subjectCode: projSub.code,
-          subjectType: 'lab',
-          teacherIds: slotTeachers,
-          teacherNames: slotTeacherNames,
-          roomName: projectRoom,
-          sharedSessionId: 'S8_PROJECT_' + targetDay + '_P' + p,
-          isLocked: true,
-          isFixed: true,
-          isMandatory: true,
-          isLabBlock: true,
-          labBlockIndex: idx,
-          labBlockDuration: 6,
-          isEmpty: false,
-          isBreak: false,
-          isBatchSplit: false,
-          isElective: false,
-        };
+      } else {
+        if (p === 3 || p === 6) {
+          slotTeachers = [];
+          slotTeacherNames = ['Project Committee'];
+        }
       }
+      grid[cid][targetDay][p] = {
+        day: targetDay,
+        period: p,
+        subjectId: projSub._id.toString(),
+        subjectName: projSub.name,
+        subjectCode: projSub.code,
+        subjectType: 'lab',
+        teacherIds: slotTeachers,
+        teacherNames: slotTeacherNames,
+        roomName: projectRoom,
+        sharedSessionId: 'S8_PROJECT_' + targetDay + '_P' + p,
+        isLocked: true,
+        isFixed: true,
+        isMandatory: true,
+        isLabBlock: true,
+        labBlockIndex: idx,
+        labBlockDuration: 6,
+        isEmpty: false,
+        isBreak: false,
+        isBatchSplit: false,
+        isElective: false,
+      };
     }
-    fixedPlacedCounts[projSub._id.toString()] = 12;
+    fixedPlacedCounts[projSub._id.toString()] = 6;
   }
   for (const subject of subjects) {
     const fixedSlots = (subject.fixedSlots || []).filter(fs => fs && fs.day && fs.period && fs.isMandatory !== false);
