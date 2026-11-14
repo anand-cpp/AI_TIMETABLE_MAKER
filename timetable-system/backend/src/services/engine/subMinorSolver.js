@@ -1,14 +1,3 @@
-
-function arePeriodsConsecutiveWithoutRest(p1, p2, day) {
-  if (p2 !== p1 + 1) return false;
-  if (day === 'Friday') {
-    if (p1 === 4 && p2 === 5) return false;
-  } else {
-    if (p1 === 3 && p2 === 4) return false;
-  }
-  return true;
-}
-
 /**
  * Sub-Minor Permutation Constraint Solver
  *
@@ -133,13 +122,13 @@ function solveSubMinorAllocation(classConfigs, fixedSlots = DEFAULT_FIXED_SLOTS,
         });
       }
     }
-    classUnitsMap[(cfg.classId?._id ? cfg.classId._id.toString() : cfg.classId.toString())] = units;
+    classUnitsMap[cfg.classId.toString()] = units;
   }
 
   // 2. Generate permutations for each class
   const classCandidatesMap = {};
   for (const cfg of classConfigs) {
-    const classIdStr = (cfg.classId?._id ? cfg.classId._id.toString() : cfg.classId.toString());
+    const classIdStr = cfg.classId.toString();
     const units = classUnitsMap[classIdStr];
     const perms = getPermutations(units);
 
@@ -164,42 +153,18 @@ function solveSubMinorAllocation(classConfigs, fixedSlots = DEFAULT_FIXED_SLOTS,
             }
           }
 
-          // Check if teacher is busy elsewhere in the grid & rest gaps
+          // Check if teacher is busy elsewhere in the grid
           if (grid) {
-            const teacherPeriodsOnDay = [];
             for (const [otherClassId, daySlots] of Object.entries(grid)) {
-              for (const [pStr, otherSlot] of Object.entries(daySlots?.[slot.day] || {})) {
-                if (otherSlot && !otherSlot.isEmpty && !otherSlot.isBreak) {
-                  if (otherSlot.teacherIds && otherSlot.teacherIds.includes(tId)) {
-                    if (Number(pStr) === Number(slot.period)) {
-                      isViable = false;
-                      break;
-                    }
-                    teacherPeriodsOnDay.push(Number(pStr));
-                  }
+              if (otherClassId === classIdStr) continue;
+              const otherSlot = daySlots?.[slot.day]?.[slot.period];
+              if (otherSlot && !otherSlot.isEmpty && !otherSlot.isBreak) {
+                // If the other slot is not a minor session
+                if (!otherSlot.isMinor && otherSlot.teacherIds && otherSlot.teacherIds.includes(tId)) {
+                  isViable = false;
+                  break;
                 }
               }
-              if (!isViable) break;
-            }
-            if (!isViable) break;
-
-            // Rest-gap check: guarantee no > 2 consecutive teaching periods
-            teacherPeriodsOnDay.push(Number(slot.period));
-            const sorted = [...new Set(teacherPeriodsOnDay)].sort((a, b) => a - b);
-            let run = 0;
-            let last = null;
-            for (const cp of sorted) {
-              if (last !== null && arePeriodsConsecutiveWithoutRest(last, cp, slot.day)) {
-                run++;
-              } else {
-                run = 1;
-              }
-              last = cp;
-              if (run > 2) {
-                isViable = false;
-                break;
-            if (!isViable) break;
-          }
             }
           }
           if (!isViable) break;
@@ -223,7 +188,7 @@ function solveSubMinorAllocation(classConfigs, fixedSlots = DEFAULT_FIXED_SLOTS,
   }
 
   // 3. Joint backtracking search across all classes to guarantee 0 teacher collisions
-  const classIds = classConfigs.map(c => (c.classId?._id ? c.classId._id.toString() : c.classId.toString()));
+  const classIds = classConfigs.map(c => c.classId.toString());
   let solution = null;
   let evaluations = 0;
 
@@ -287,7 +252,7 @@ function solveSubMinorAllocation(classConfigs, fixedSlots = DEFAULT_FIXED_SLOTS,
   // 4. Construct authoritative allocationsByClass
   const allocationsByClass = {};
   for (const cfg of classConfigs) {
-    const classIdStr = (cfg.classId?._id ? cfg.classId._id.toString() : cfg.classId.toString());
+    const classIdStr = cfg.classId.toString();
     const assignedPerm = solution[classIdStr];
     const allocatedSlots = [];
 

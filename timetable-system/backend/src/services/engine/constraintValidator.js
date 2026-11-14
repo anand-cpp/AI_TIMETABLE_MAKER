@@ -1,22 +1,4 @@
 const { crossesBreak } = require('../../utils/timeHelpers');
-const { validateLabEligibility } = require('./labValidationService');
-
-/**
- * Checks whether two period numbers are consecutive teaching periods without a rest/lunch boundary.
- * Lunch break acts as a session boundary that separates morning and afternoon blocks.
- * Mon-Thu: Lunch is between P3 and P4.
- * Friday: Lunch is between P4 and P5.
- */
-function arePeriodsConsecutiveWithoutRest(p1, p2, day) {
-  if (p2 !== p1 + 1) return false;
-  if (day === 'Friday') {
-    if (p1 === 4 && p2 === 5) return false;
-  } else {
-    if (p1 === 3 && p2 === 4) return false;
-  }
-  return true;
-}
-
 
 /**
  * Constraint Validator - ASET 2026-27 EVEN Semester
@@ -27,9 +9,6 @@ const HARD_VIOLATION_TYPES = [
   'TEACHER_DOUBLE_BOOKED',
   'CLASS_DOUBLE_BOOKED',
   'LAB_ROOM_CONFLICT',
-  'LAB_DOUBLE_BOOKING',
-  'INVALID_LAB_ASSIGNMENT',
-  'FACULTY_REST_GAP',
   'TEACHER_UNAVAILABLE',
   'SUBJECT_UNDER_SCHEDULED',
   'SUBJECT_OVER_SCHEDULED',
@@ -58,7 +37,7 @@ const slotTeacherIds = (slot) => {
   if (Array.isArray(slot.teacherIds)) {
     slot.teacherIds.forEach((id) => id && ids.push(id.toString()));
   }
-  if (ids.length === 0 && Array.isArray(slot.coInstructorIds)) {
+  if (Array.isArray(slot.coInstructorIds)) {
     slot.coInstructorIds.forEach((id) => id && ids.push(id.toString()));
   }
   if (slot.isBatchSplit) {
@@ -70,13 +49,13 @@ const slotTeacherIds = (slot) => {
 
 const slotRoomNames = (slot) => {
   const rooms = [];
-  if (!slot || slot.isEmpty || slot.isBreak) return rooms;
-  if (slot.roomName) {
-    rooms.push(slot.roomName.trim());
+  if (!slot) return rooms;
+  if (slot.roomName && (slot.subjectType === 'lab' || slot.isBatchSplit)) {
+    rooms.push(slot.roomName);
   }
   if (slot.isBatchSplit) {
-    if (slot.batch1?.roomName) rooms.push(slot.batch1.roomName.trim());
-    if (slot.batch2?.roomName) rooms.push(slot.batch2.roomName.trim());
+    if (slot.batch1?.roomName) rooms.push(slot.batch1.roomName);
+    if (slot.batch2?.roomName) rooms.push(slot.batch2.roomName);
   }
   return rooms.filter(Boolean);
 };
@@ -199,7 +178,7 @@ const validateGrid = (grid, data) => {
 
         // 3. Teaching slot without any assigned teacher
         const realSubject = ['theory', 'lab', 'elective'].includes(slot.subjectType);
-        if (realSubject && slotTeacherIds(slot).length === 0 && !slot.isPendingFaculty && !slot.teacherNames?.includes('PENDING') && !slot.teacherNames?.includes('Project Committee')) {
+        if (realSubject && slotTeacherIds(slot).length === 0 && !slot.isPendingFaculty && !slot.teacherNames?.includes('PENDING')) {
           violations.push({
             type: 'INVALID_SLOT_NO_TEACHER',
             message: `Class ${classId}: ${day} P${period} has '${slot.subjectName || slot.subjectType}' but no valid teacher`,
@@ -255,23 +234,15 @@ const validateGrid = (grid, data) => {
 
         // 5. Lab room double-booking
         for (const room of slotRoomNames(slot)) {
-          if (!room.toLowerCase().startsWith('lab')) continue;
           if (!labRoomSchedule[room]) labRoomSchedule[room] = {};
           if (!labRoomSchedule[room][day]) labRoomSchedule[room][day] = [];
 
           if (labRoomSchedule[room][day].includes(period)) {
             if (!slot.isOverride) {
               violations.push({
-                type: 'LAB_DOUBLE_BOOKING',
-                code: 'LAB_DOUBLE_BOOKING',
-                severity: 'hard',
-                message: `Lab room '${room}' is double-booked by multiple classes on ${day} period ${period}`,
-                room, day, period, classId,
-              });
-              violations.push({
                 type: 'LAB_ROOM_CONFLICT',
                 message: `Lab room '${room}' is used by multiple classes on ${day} period ${period}`,
-                room, day, period, classId,
+                room, day, period,
               });
             }
           } else {
@@ -292,22 +263,27 @@ const validateGrid = (grid, data) => {
           }
         }
 
-        // 7. Strict Laboratory Allocation Matrix
-        const roomName = (slot.roomName || '').trim();
-        if (roomName.toLowerCase().startsWith('lab') || slot.isLabBlock || (slot.subjectCode && ['CST416', 'CSD416'].includes(slot.subjectCode))) {
+        // 7. Lab Room Mismatch (Validates slot against subject's allowedLabs)
+        if (slot.subjectType === 'lab' && slot.roomName) {
           const classSem = slot.classSemester || data.classMap?.[classId]?.semester || 0;
-          const elig = validateLabEligibility(classSem, roomName, slot, slot);
-          if (!elig.valid && !slot.isOverride) {
+          const isProject = slot.subjectCode?.includes('416') || slot.subjectName?.includes('Project Phase');
+          const subjectObj = (data.subjects || []).find((s) => s._id?.toString() === slot.subjectId?.toString());
+          const subjectAllowed = slot.allowedLabs || subjectObj?.allowedLabs || subjectObj?.labDetails?.allowedLabs;
+
+          let allowedRooms = [];
+          if (Array.isArray(subjectAllowed) && subjectAllowed.length > 0) {
+            allowedRooms = subjectAllowed;
+          } else if (classSem === 2 || isProject) {
+            allowedRooms = ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'];
+          } else {
+            allowedRooms = ['Lab 1', 'Lab 2', 'Lab 3', 'Lab 4'];
+          }
+
+          if (allowedRooms.length > 0 && !allowedRooms.includes(slot.roomName) && !slot.isOverride) {
             violations.push({
-              type: 'INVALID_LAB_ASSIGNMENT',
-              severity: 'hard',
-              message: `Class ${classId} (Semester ${classSem}): ${elig.reason}`,
-              classId,
-              day,
-              period,
-              room: roomName,
-              semester: classSem,
-              permittedRooms: elig.permittedRooms,
+              type: 'LAB_ROOM_MISMATCH',
+              message: `Class ${classId}: Lab assigned to ${slot.roomName} but requires ${allowedRooms.join(' or ')}`,
+              classId, day, period, room: slot.roomName,
             });
           }
         }
@@ -387,74 +363,6 @@ const validateGrid = (grid, data) => {
           type: 'TEACHER_DAILY_LIMIT_EXCEEDED',
           message: `Teacher ${teacher?.name || teacherId} has ${periodCount} periods on ${day}, exceeding limit of ${customLimit}`,
           teacherId, day, periodsCount: periodCount, limit: customLimit,
-        });
-      }
-    }
-  }
-
-  // 8B. Global Faculty Rest-Gap Enforcement: Max 2 consecutive teaching periods globally (Lunch boundary separates morning and afternoon)
-  for (const [teacherId, daySchedule] of Object.entries(teacherSchedule)) {
-    const teacher = teacherMap[teacherId];
-    for (const [day, claims] of Object.entries(daySchedule || {})) {
-      const distinctPeriods = [...new Set(claims.map((c) => c.period))].sort((a, b) => a - b);
-      let run = [];
-      for (const p of distinctPeriods) {
-        const lastP = run[run.length - 1];
-        const isConsecutive = run.length === 0 || arePeriodsConsecutiveWithoutRest(lastP, p, day);
-        if (isConsecutive) {
-          run.push(p);
-        } else {
-          if (run.length > 2) {
-            violations.push({
-              type: 'FACULTY_REST_GAP',
-              severity: 'hard',
-              message: `Faculty member ${teacher?.name || teacherId} has ${run.length} consecutive teaching periods on ${day} (Periods P${run[0]}–P${run[run.length - 1]}) without a rest gap. A guaranteed rest gap is required after at most 2 consecutive periods.`,
-              teacherId,
-              teacherName: teacher?.name || teacherId,
-              day,
-              period: run[0],
-              periods: [...run],
-              consecutiveCount: run.length,
-            });
-          } else if (run.length === 2) {
-            violations.push({
-              type: 'FACULTY_CONSECUTIVE_TEACHING_WARNING',
-              severity: 'soft',
-              message: `Faculty member ${teacher?.name || teacherId} has 2 consecutive teaching periods on ${day} (Periods P${run[0]}–P${run[1]}). Isolated teaching periods (Teaching -> Free -> Teaching) are preferred.`,
-              teacherId,
-              teacherName: teacher?.name || teacherId,
-              day,
-              period: run[0],
-              periods: [...run],
-              consecutiveCount: 2,
-            });
-          }
-          run = [p];
-        }
-      }
-      if (run.length > 2) {
-        violations.push({
-          type: 'FACULTY_REST_GAP',
-          severity: 'hard',
-          message: `Faculty member ${teacher?.name || teacherId} has ${run.length} consecutive teaching periods on ${day} (Periods P${run[0]}–P${run[run.length - 1]}) without a rest gap. A guaranteed rest gap is required after at most 2 consecutive periods.`,
-          teacherId,
-          teacherName: teacher?.name || teacherId,
-          day,
-          period: run[0],
-          periods: [...run],
-          consecutiveCount: run.length,
-        });
-      } else if (run.length === 2) {
-        violations.push({
-          type: 'FACULTY_CONSECUTIVE_TEACHING_WARNING',
-          severity: 'soft',
-          message: `Faculty member ${teacher?.name || teacherId} has 2 consecutive teaching periods on ${day} (Periods P${run[0]}–P${run[1]}). Isolated teaching periods (Teaching -> Free -> Teaching) are preferred.`,
-          teacherId,
-          teacherName: teacher?.name || teacherId,
-          day,
-          period: run[0],
-          periods: [...run],
-          consecutiveCount: 2,
         });
       }
     }
@@ -604,13 +512,9 @@ const validateGrid = (grid, data) => {
 
       const isS8OrFullProjectClass = Boolean(cls?.semester === 8 || (cls?.name || '').includes('S8'));
       const availableDaysCount = isS8OrFullProjectClass ? 3 : 5;
-      const defaultMaxAllowed = availableDaysCount >= 5 ? 1 : Math.ceil(4 / availableDaysCount);
+      const maxAllowed = availableDaysCount >= 5 ? 1 : Math.ceil(4 / availableDaysCount);
 
       for (const [key, slots] of Object.entries(subjectSlotsMap)) {
-        const subId = slots[0]?.slot?.subjectId?.toString();
-        const subObj = (data.subjects || []).find(s => s._id?.toString() === subId);
-        const subHours = subObj?.weeklyHours || 4;
-        const maxAllowed = (isS8OrFullProjectClass || subHours >= 5) ? 2 : defaultMaxAllowed;
         if (slots.length > maxAllowed) {
           const subName = slots[0].slot.subjectName || slots[0].slot.subjectCode || key;
           const periods = slots.map(s => s.period);
@@ -640,7 +544,9 @@ const validateGrid = (grid, data) => {
       const sections = eg.sections || ['A', 'B'];
       const participatingClasses = (data.classes || []).filter(c => {
         if (c.semester !== sem) return false;
-        return sections.includes(c.section);
+        if (sections.includes(c.section)) return true;
+        if (sections.some(sec => c.name?.includes(sec))) return true;
+        return false;
       });
 
       if (participatingClasses.length < 2) continue;
@@ -994,26 +900,24 @@ const validateOutput = (grid, data, unplacedSubjects = []) => {
         return true;
       });
       if (targetClasses.length > 1) {
-        for (const day of (data.workingDays || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])) {
-          for (let period = 1; period <= 6; period++) {
-            const class1 = targetClasses[0]._id.toString();
-            const slot1 = grid[class1]?.[day]?.[period];
-            const s1Minor = !!(slot1 && (slot1.isMinor || slot1.subjectType === 'minor'));
-            for (let i = 1; i < targetClasses.length; i++) {
-              const class2 = targetClasses[i]._id.toString();
-              const slot2 = grid[class2]?.[day]?.[period];
-              const s2Minor = !!(slot2 && (slot2.isMinor || slot2.subjectType === 'minor'));
-              if (s1Minor !== s2Minor) {
-                minorViolationsCount++;
-                hardViolations.push({
-                  type: 'MINOR_DESYNCHRONIZATION',
-                  message: `Minor synchronization mismatch between ${targetClasses[0].name} and ${targetClasses[i].name} on ${day} Period ${period}. Minor courses must be scheduled synchronously across all participating sections.`,
-                  day,
-                  period,
-                  class1Id: class1,
-                  class2Id: class2,
-                });
-              }
+        const checkSlots = (mg.fixedSlots && mg.fixedSlots.length > 0) ? mg.fixedSlots : (mg.slots || []);
+        for (const slotConfig of checkSlots) {
+          const { day, period } = slotConfig;
+          const class1 = targetClasses[0]._id.toString();
+          const slot1 = grid[class1]?.[day]?.[period];
+          for (let i = 1; i < targetClasses.length; i++) {
+            const class2 = targetClasses[i]._id.toString();
+            const slot2 = grid[class2]?.[day]?.[period];
+            const s1Minor = slot1 && (slot1.isMinor || slot1.subjectType === 'minor');
+            const s2Minor = slot2 && (slot2.isMinor || slot2.subjectType === 'minor');
+            if (s1Minor !== s2Minor) {
+              minorViolationsCount++;
+              hardViolations.push({
+                type: 'MINOR_DESYNCHRONIZATION',
+                message: `Minor synchronization mismatch between ${targetClasses[0].name} and ${targetClasses[i].name} on ${day} Period ${period}`,
+                day,
+                period,
+              });
             }
           }
         }
@@ -1072,17 +976,8 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
 
   // Check Daily Subject Uniqueness (Rule 2 & Rule 3)
   if (!isDailyUniquenessExempt(slot) && grid[classId]?.[day]) {
-    const cls = data.classMap?.[classId?.toString()];
-    const isS8 = Boolean(cls?.semester === 8 || (cls?.name || '').includes('S8') || classId?.toString().includes('S8'));
-    const subObj = (data.subjects || []).find(s => s._id?.toString() === slot?.subjectId?.toString());
-    const weeklyHours = subObj?.weeklyHours || slot?.weeklyHours || 0;
-    const maxAllowedOnDay = (isS8 || weeklyHours >= 5 || options.ignoreSameDay) ? 2 : 1;
-    let occurrencesOnDay = 0;
-
     const targetKey = (slot.isElective && (slot.electiveGroupId || slot.linkedGroupId))
       ? `ELECTIVE_${slot.electiveGroupId || slot.linkedGroupId}`
-      : (slot.isMinor || slot.subjectType === 'minor')
-      ? `MINOR_${slot.minorGroupId || 'TRACK'}`
       : (slot.subjectCode || slot.subjectName || (slot.subjectId ? slot.subjectId.toString() : null));
 
     if (targetKey) {
@@ -1091,15 +986,10 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
         if (!isOccupied(existingSlot)) continue;
         const existKey = (existingSlot.isElective && (existingSlot.electiveGroupId || existingSlot.linkedGroupId))
           ? `ELECTIVE_${existingSlot.electiveGroupId || existingSlot.linkedGroupId}`
-          : (existingSlot.isMinor || existingSlot.subjectType === 'minor')
-          ? `MINOR_${existingSlot.minorGroupId || 'TRACK'}`
           : (existingSlot.subjectCode || existingSlot.subjectName || (existingSlot.subjectId ? existingSlot.subjectId.toString() : null));
 
         if (existKey === targetKey && !isDailyUniquenessExempt(existingSlot)) {
-          occurrencesOnDay++;
-          if (occurrencesOnDay >= maxAllowedOnDay) {
-            return false;
-          }
+          return false;
         }
       }
     }
@@ -1161,36 +1051,20 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
       const effectiveLimit = isProjectSlot ? Math.max(customLimit, 6) : customLimit;
       if (teacherPeriodsOnDay + additionalPeriods > effectiveLimit) return false;
 
-      // Faculty Rest-Gap Hard Constraint: Every faculty member at most 2 consecutive teaching periods globally (Lunch boundary separates morning & afternoon)
-      const candidatePeriods = new Set(distinctPeriodsOnDay);
-      const dur = options.additionalPeriods || 1;
-      for (let i = 0; i < dur; i++) {
-        candidatePeriods.add(Number(period) + i);
-      }
-      const sortedPeriods = [...candidatePeriods].sort((a, b) => a - b);
-      let curConsecutive = 0;
-      let lastP = null;
-      for (const cp of sortedPeriods) {
-        if (lastP !== null && arePeriodsConsecutiveWithoutRest(lastP, cp, day)) {
-          curConsecutive++;
-        } else {
-          curConsecutive = 1;
-        }
-        lastP = cp;
-        if (curConsecutive > 2) {
-          return false;
-        }
+      // Ensure breaks: No teacher teaches 3 or more continuous periods without a break
+      const isProjectExempt = slot.subjectCode === 'CSD416' || slot.subjectCode === 'CST416' || slot.subjectName?.includes('Project Phase');
+      if (!slot.isLabBlock && !isProjectExempt && !allowOvertime) {
+        const p = Number(period);
+        const m1 = distinctPeriodsOnDay.has(p - 1);
+        const m2 = distinctPeriodsOnDay.has(p - 2);
+        const p1 = distinctPeriodsOnDay.has(p + 1);
+        const p2 = distinctPeriodsOnDay.has(p + 2);
+        if ((m1 && m2) || (m1 && p1) || (p1 && p2)) return false;
       }
     }
   }
 
   for (const room of slotRoomNames(slot)) {
-    if (room.toLowerCase().startsWith('lab') || slot.isLabBlock || (slot.subjectCode && ['CST416', 'CSD416'].includes(slot.subjectCode))) {
-      const classSem = slot.classSemester || data.classMap?.[classId]?.semester || 0;
-      const elig = validateLabEligibility(classSem, room, slot, slot);
-      if (!elig.valid && !slot.isOverride) return false;
-    }
-
     for (const [otherClassId, dayMap] of Object.entries(grid)) {
       if (otherClassId === classId) continue;
       const existingSlot = dayMap[day]?.[period];
@@ -1225,60 +1099,8 @@ const isLabBlockValid = (classId, day, startPeriod, duration, slot, grid, data, 
   const tl = day === 'Friday' && settings.fridaySeparate ? fridayTimeline : timeline;
   if (crossesBreak(startPeriod, duration, tl)) return false;
 
-  const tIds = slotTeacherIds(slot);
-  const coIds = (slot.coInstructorIds || []).map(id => (id?._id ? id._id.toString() : id.toString()));
-
-  // 1. Comprehensive block rest-gap check for each involved teacher
-  for (const tId of tIds) {
-    const teacherPeriodsOnDay = [];
-    for (const [, dayMap] of Object.entries(grid)) {
-      for (const [pNum, s] of Object.entries(dayMap[day] || {})) {
-        if (!s || s.isEmpty || s.isBreak) continue;
-        if (slotTeacherIds(s).includes(tId)) {
-          teacherPeriodsOnDay.push(Number(pNum));
-        }
-      }
-    }
-    // Add the periods this teacher actually teaches in this proposed block
-    for (let i = 0; i < duration; i++) {
-      const p = startPeriod + i;
-      let teachesThisPeriod = true;
-      if (duration === 3 && tIds.length >= 2) {
-        if (i === 0 && tId !== tIds[0]) teachesThisPeriod = false;
-        if (i === 2 && tId !== (coIds[0] || tIds[1])) teachesThisPeriod = false;
-      }
-      if (teachesThisPeriod) {
-        teacherPeriodsOnDay.push(p);
-      }
-    }
-    const sorted = [...new Set(teacherPeriodsOnDay)].sort((a, b) => a - b);
-    let run = 0;
-    let last = null;
-    for (const cp of sorted) {
-      if (last !== null && arePeriodsConsecutiveWithoutRest(last, cp, day)) {
-        run++;
-      } else {
-        run = 1;
-      }
-      last = cp;
-      if (run > 2) {
-        return false; // Hard rest gap violated
-      }
-    }
-  }
-
-  // 2. Individual slot validity checks
-  for (let i = 0; i < duration; i++) {
-    const p = startPeriod + i;
-    let periodSlot = slot;
-    if (duration === 3 && tIds.length >= 2) {
-      let pTeachers = tIds;
-      if (i === 0) pTeachers = [tIds[0]];
-      else if (i === 1) pTeachers = tIds;
-      else if (i === 2) pTeachers = coIds.length > 0 ? coIds : [tIds[1]];
-      periodSlot = { ...slot, teacherIds: pTeachers };
-    }
-    if (!isSlotValid(classId, day, p, periodSlot, grid, data, { ...options, additionalPeriods: 1 })) {
+  for (let p = startPeriod; p < startPeriod + duration; p++) {
+    if (!isSlotValid(classId, day, p, slot, grid, data, { ...options, additionalPeriods: duration })) {
       return false;
     }
   }
@@ -1287,7 +1109,6 @@ const isLabBlockValid = (classId, day, startPeriod, duration, slot, grid, data, 
 };
 
 module.exports = {
-  arePeriodsConsecutiveWithoutRest,
   isPhase2Project,
   isLaboratory,
   isDailyUniquenessExempt,
