@@ -66,20 +66,40 @@ const isAuthorizedSharedSessionGroup = (allocs, day, period, teacherId) => {
   if (!sid || !allocs.every(a => a.sharedSessionId === sid)) return false;
 
   // Case 1: S8 Capstone Project Phase-2
+  // STRICT REQUIREMENT: CST416/CSD416, exactly 2 allocations (S8 CSE A and S8 CSE B),
+  // Dr S Gunasekaran, Thursday or Friday, Periods 1-6, isSharedProject: true.
   const isThuFri = day === 'Thursday' || day === 'Friday';
-  const allCapstone = allocs.every(a => a.subjectCode === 'CST416' || a.subjectCode === 'CSD416' || a.isSharedProject);
-  if (allCapstone && isThuFri) {
+  const isPeriodValid = period >= 1 && period <= 6;
+  const allCapstoneCode = allocs.every(a => a.subjectCode === 'CST416' || a.subjectCode === 'CSD416');
+  const allSharedProject = allocs.every(a => a.isSharedProject === true);
+
+  if (allCapstoneCode && allSharedProject && isThuFri && isPeriodValid) {
     const isDrGuna = teacherId === '6aeccf3cbb1e84200c3db02b' || allocs.some(a => (a.teacherName || '').includes('Gunasekaran'));
-    const allS8 = allocs.every(a => (a.className || '').includes('S8'));
-    if (isDrGuna && allS8) return true;
+    const s8aAlloc = allocs.find(a => (a.className || '').includes('S8 CSE A') || a.classId === '6aeccf3cbb1e84200c3db01f');
+    const s8bAlloc = allocs.find(a => (a.className || '').includes('S8 CSE B') || a.classId === '6aeccf3cbb1e84200c3db020');
+    if (isDrGuna && s8aAlloc && s8bAlloc && allocs.length === 2) {
+      return true;
+    }
   }
 
-  // Case 2: Synchronized Elective (all must be elective with same electiveGroupId AND same subjectCode)
-  const allElective = allocs.every(a => a.isElective && a.electiveGroupId && a.subjectCode === allocs[0].subjectCode);
+  // Case 2: Synchronized Elective (all must be elective with matching electiveGroupId AND matching subjectCode)
+  const firstElectiveGroupId = allocs[0].electiveGroupId;
+  const allElective = allocs.every(a =>
+    a.isElective &&
+    a.electiveGroupId &&
+    a.electiveGroupId === firstElectiveGroupId &&
+    a.subjectCode === allocs[0].subjectCode
+  );
   if (allElective) return true;
 
-  // Case 3: Synchronized Minor (all must be minor with same minorGroupId AND same subjectCode)
-  const allMinor = allocs.every(a => (a.isMinor || a.subjectType === 'minor') && a.subjectCode === allocs[0].subjectCode);
+  // Case 3: Synchronized Minor (all must be minor with matching minorGroupId AND matching subjectCode)
+  const firstMinorGroupId = allocs[0].minorGroupId;
+  const allMinor = allocs.every(a =>
+    (a.isMinor || a.subjectType === 'minor') &&
+    a.minorGroupId &&
+    a.minorGroupId === firstMinorGroupId &&
+    a.subjectCode === allocs[0].subjectCode
+  );
   if (allMinor) return true;
 
   // Ordinary theory/lab subjects can NEVER be shared
@@ -104,11 +124,30 @@ function auditTimetable(grid, data, options = {}) {
   for (const t of teachers) teacherMap[t._id.toString()] = t;
 
   const teacherNameToIdMap = {};
+  const ambiguousTeacherNames = new Set();
   for (const [tid, t] of Object.entries(teacherMap)) {
-    if (t && t.name) teacherNameToIdMap[t.name.trim().toLowerCase()] = tid;
+    if (t && t.name) {
+      const norm = t.name.trim().toLowerCase();
+      if (teacherNameToIdMap[norm] && teacherNameToIdMap[norm] !== tid) {
+        ambiguousTeacherNames.add(norm);
+      } else {
+        teacherNameToIdMap[norm] = tid;
+      }
+    }
   }
   for (const t of teachers) {
-    if (t && t.name && t._id) teacherNameToIdMap[t.name.trim().toLowerCase()] = t._id.toString();
+    if (t && t.name && t._id) {
+      const norm = t.name.trim().toLowerCase();
+      const tid = t._id.toString();
+      if (teacherNameToIdMap[norm] && teacherNameToIdMap[norm] !== tid) {
+        ambiguousTeacherNames.add(norm);
+      } else {
+        teacherNameToIdMap[norm] = tid;
+      }
+    }
+  }
+  for (const name of ambiguousTeacherNames) {
+    delete teacherNameToIdMap[name];
   }
 
   const hardViolations = [];

@@ -211,22 +211,29 @@ describe('CRITICAL REGRESSION SUITE: FACULTY DOUBLE-BOOKING PREVENTION & AUTO RE
     assert.equal(teacherConflicts.length, 0, 'Different periods must produce 0 teacher collisions');
   });
 
+  async function createTestTimetable(label, lockAll = false) {
+    const cloneData = JSON.parse(JSON.stringify(baseTimetable.toObject()));
+    delete cloneData._id;
+    const maxDoc = await Timetable.findOne().sort({ version: -1 });
+    cloneData.version = (maxDoc ? maxDoc.version : 95000) + Math.floor(Math.random() * 1000) + 1;
+    cloneData.revision = 1;
+    cloneData.appliedIdempotencyKeys = [];
+    cloneData.label = `Test Timetable ${label} (${cloneData.version})`;
+    cloneData.isAccepted = false;
+    for (const ct of cloneData.classTimetables) {
+      for (const s of ct.slots) s.isLocked = lockAll;
+    }
+    const doc = new Timetable(cloneData);
+    await doc.save();
+    return doc;
+  }
+
   // -------------------------------------------------------------
   // Test D: Legal Swap via Auto Readjust
   // -------------------------------------------------------------
   test('Test D: Legal swap candidate finds viable conflict-free 3-way cyclic shift with 0 violations', async () => {
     // Create disposable test timetable document
-    const cloneData = JSON.parse(JSON.stringify(baseTimetable.toObject()));
-    delete cloneData._id;
-    cloneData.version = 98001;
-    cloneData.revision = 1;
-    cloneData.label = 'Test D Legal Swap';
-    cloneData.isAccepted = false;
-    for (const ct of cloneData.classTimetables) {
-      for (const s of ct.slots) s.isLocked = false;
-    }
-    const doc = new Timetable(cloneData);
-    await doc.save();
+    const doc = await createTestTimetable('Test D Legal Swap', false);
 
     const s2a = doc.classTimetables.find(c => c.className.includes('S2 CSE A'));
     const cid = s2a.classId.toString();
@@ -254,18 +261,7 @@ describe('CRITICAL REGRESSION SUITE: FACULTY DOUBLE-BOOKING PREVENTION & AUTO RE
   // -------------------------------------------------------------
   test('Test E: Impossible arrangement reports explicit failure, original timetable document unchanged', async () => {
     // Create disposable test timetable where all target class slots are locked
-    const cloneData = JSON.parse(JSON.stringify(baseTimetable.toObject()));
-    delete cloneData._id;
-    cloneData.version = 98002;
-    cloneData.revision = 1;
-    cloneData.label = 'Test E Impossible';
-    cloneData.isAccepted = false;
-    // Lock all slots
-    for (const ct of cloneData.classTimetables) {
-      for (const s of ct.slots) s.isLocked = true;
-    }
-    const doc = new Timetable(cloneData);
-    await doc.save();
+    const doc = await createTestTimetable('Test E Impossible', true);
 
     const s2a = doc.classTimetables.find(c => c.className.includes('S2 CSE A'));
     const cid = s2a.classId.toString();
@@ -376,14 +372,7 @@ describe('CRITICAL REGRESSION SUITE: FACULTY DOUBLE-BOOKING PREVENTION & AUTO RE
   // -------------------------------------------------------------
   test('Test H: Candidate timetable with double-booking is rejected and never reported as success', async () => {
     // Create disposable test timetable
-    const cloneData = JSON.parse(JSON.stringify(baseTimetable.toObject()));
-    delete cloneData._id;
-    cloneData.version = 98003;
-    cloneData.revision = 1;
-    cloneData.label = 'Test H False Success Prevention';
-    cloneData.isAccepted = false;
-    const doc = new Timetable(cloneData);
-    await doc.save();
+    const doc = await createTestTimetable('Test H False Success Prevention', false);
 
     const s2a = doc.classTimetables.find(c => c.className.includes('S2 CSE A'));
     const s2b = doc.classTimetables.find(c => c.className.includes('S2 CSE B'));

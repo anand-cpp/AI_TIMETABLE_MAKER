@@ -154,18 +154,40 @@ const isDailyUniquenessExempt = (slot) => {
 };
 
 
-const sharedElectiveToken = (slot, teacherId = null) => {
+const sharedElectiveToken = (slot, teacherId = null, classId = null) => {
   if (!slot || slot.isEmpty || slot.isBreak) return null;
 
   // 1. Authorized S8 Capstone Project Phase-2 joint supervision on Thursday/Friday
+  // Strict rule: Requires CST416/CSD416, Dr S Gunasekaran, Thursday or Friday, Periods 1-6,
+  // S8 CSE A or S8 CSE B, isSharedProject: true, and non-empty sharedSessionId.
   const isCapstoneCode = slot.subjectCode === 'CST416' || slot.subjectCode === 'CSD416';
   const isThuFri = slot.day === 'Thursday' || slot.day === 'Friday';
-  if ((isCapstoneCode || slot.isSharedProject) && isThuFri) {
-    const isDrGuna = !teacherId || teacherId === '6aeccf3cbb1e84200c3db02b' ||
-      (slot.teacherNames || []).some(n => n.includes('Gunasekaran')) ||
+  const isPeriodValid = slot.period >= 1 && slot.period <= 6;
+  const isSharedProj = slot.isSharedProject === true;
+  const hasSharedSessionId = Boolean(slot.sharedSessionId);
+
+  const cidStr = String(classId || slot.classId || '');
+  const cName = String(slot.className || '');
+  const isS8Class =
+    cidStr === '6aeccf3cbb1e84200c3db01f' ||
+    cidStr === '6aeccf3cbb1e84200c3db020' ||
+    cName.includes('S8 CSE') ||
+    (!cidStr && !cName); // fallback for isolated slot tests
+
+  if (isCapstoneCode && isSharedProj && hasSharedSessionId && isThuFri && isPeriodValid && isS8Class) {
+    const isDrGuna =
+      !teacherId ||
+      teacherId === '6aeccf3cbb1e84200c3db02b' ||
+      (slot.teacherNames || []).some((n) => n.includes('Gunasekaran')) ||
       (slot.teacherIds || []).includes('6aeccf3cbb1e84200c3db02b');
     if (isDrGuna) {
-      return slot.sharedSessionId || ('SHARED_S8_PROJECT_' + (slot.day || '').toUpperCase().slice(0, 3) + '_P' + (slot.period || ''));
+      return (
+        slot.sharedSessionId ||
+        ('SHARED_S8_PROJECT_' +
+          (slot.day || '').toUpperCase().slice(0, 3) +
+          '_P' +
+          (slot.period || ''))
+      );
     }
   }
 
@@ -202,15 +224,30 @@ const validateGrid = (grid, data) => {
   } = data;
 
   const teacherNameToIdMap = {};
+  const ambiguousTeacherNames = new Set();
   for (const [tid, t] of Object.entries(teacherMap || {})) {
     if (t && t.name) {
-      teacherNameToIdMap[t.name.trim().toLowerCase()] = tid;
+      const norm = t.name.trim().toLowerCase();
+      if (teacherNameToIdMap[norm] && teacherNameToIdMap[norm] !== tid) {
+        ambiguousTeacherNames.add(norm);
+      } else {
+        teacherNameToIdMap[norm] = tid;
+      }
     }
   }
   for (const t of (data.teachers || [])) {
     if (t && t.name && t._id) {
-      teacherNameToIdMap[t.name.trim().toLowerCase()] = t._id.toString();
+      const norm = t.name.trim().toLowerCase();
+      const tid = t._id.toString();
+      if (teacherNameToIdMap[norm] && teacherNameToIdMap[norm] !== tid) {
+        ambiguousTeacherNames.add(norm);
+      } else {
+        teacherNameToIdMap[norm] = tid;
+      }
     }
+  }
+  for (const name of ambiguousTeacherNames) {
+    delete teacherNameToIdMap[name];
   }
 
   const teacherDailyLimitOverrides = adminOverrides.teacherDailyLimitOverrides || {};
@@ -278,7 +315,7 @@ const validateGrid = (grid, data) => {
           if (!teacherSchedule[teacherId][day]) teacherSchedule[teacherId][day] = [];
 
           const existingClaim = teacherSchedule[teacherId][day].find((c) => c.period === period);
-          const token = sharedElectiveToken(slot, teacherId);
+          const token = sharedElectiveToken(slot, teacherId, classId);
 
           if (existingClaim) {
             const sharedSession =
@@ -1127,11 +1164,30 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
   }
 
   const teacherNameToIdMap = {};
+  const ambiguousTeacherNames = new Set();
   for (const [tid, t] of Object.entries(teacherMap || {})) {
-    if (t && t.name) teacherNameToIdMap[t.name.trim().toLowerCase()] = tid;
+    if (t && t.name) {
+      const norm = t.name.trim().toLowerCase();
+      if (teacherNameToIdMap[norm] && teacherNameToIdMap[norm] !== tid) {
+        ambiguousTeacherNames.add(norm);
+      } else {
+        teacherNameToIdMap[norm] = tid;
+      }
+    }
   }
   for (const t of (data.teachers || [])) {
-    if (t && t.name && t._id) teacherNameToIdMap[t.name.trim().toLowerCase()] = t._id.toString();
+    if (t && t.name && t._id) {
+      const norm = t.name.trim().toLowerCase();
+      const tid = t._id.toString();
+      if (teacherNameToIdMap[norm] && teacherNameToIdMap[norm] !== tid) {
+        ambiguousTeacherNames.add(norm);
+      } else {
+        teacherNameToIdMap[norm] = tid;
+      }
+    }
+  }
+  for (const name of ambiguousTeacherNames) {
+    delete teacherNameToIdMap[name];
   }
 
   const teacherIds = slotTeacherIds(slot, teacherMap, teacherNameToIdMap);
@@ -1159,8 +1215,8 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
       const existingSlot = dayMap[day]?.[period];
       if (!isOccupied(existingSlot)) continue;
       if (slotTeacherIds(existingSlot, teacherMap, teacherNameToIdMap).includes(teacherId)) {
-        const token1 = sharedElectiveToken(slot, teacherId);
-        const token2 = sharedElectiveToken(existingSlot, teacherId);
+        const token1 = sharedElectiveToken(slot, teacherId, classId);
+        const token2 = sharedElectiveToken(existingSlot, teacherId, otherClassId);
         if (!token1 || !token2 || token1 !== token2) return false;
       }
     }
