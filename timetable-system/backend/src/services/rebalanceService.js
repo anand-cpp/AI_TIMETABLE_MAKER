@@ -7,6 +7,7 @@ const { loadData } = require('./engine/dataLoader');
 const { validateOutput, slotTeacherIds, isSlotValid } = require('./engine/constraintValidator');
 const { auditTimetable } = require('./engine/independentValidator');
 const { validateGlobalTimetable } = require('./engine/globalTimetableValidator');
+const { validatePersistedTimetable } = require('./engine/persistedValidator');
 const { gridToClassTimetables } = require('./engine/orchestrator');
 const {
   isLabSlot,
@@ -577,6 +578,17 @@ async function commitRebalance(timetableId, classId, source, target, rebalancedG
   const updatedClassTimetables = gridToClassTimetables(rebalancedGrid, classes);
 
   timetable.classTimetables = updatedClassTimetables;
+
+  // Execute Fourth Independent Validator (Persisted Grid & Document Validator)
+  const persistValidation = await validatePersistedTimetable(timetable);
+  const academicPersistViolations = (persistValidation.hardViolations || []).filter(
+    (v) => v.type !== 'MISSING_CLASS_DATA' && EDIT_BLOCKING_TYPES.has(v.type || v.code)
+  );
+  if (academicPersistViolations.length > 0) {
+    const persistErrorMsg = academicPersistViolations[0]?.message || 'Persisted constraint validation failed';
+    throw new Error(`Rebalance persisted validation failed: ${persistErrorMsg}`);
+  }
+
   timetable.revision = currentRevision + 1;
   timetable.updatedAt = new Date();
   timetable.undoStack = timetable.undoStack || [];
