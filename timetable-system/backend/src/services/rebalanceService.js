@@ -5,6 +5,8 @@ const Class = require('../models/Class');
 const Subject = require('../models/Subject');
 const { loadData } = require('./engine/dataLoader');
 const { validateOutput, slotTeacherIds, isSlotValid } = require('./engine/constraintValidator');
+const { auditTimetable } = require('./engine/independentValidator');
+const { validateGlobalTimetable } = require('./engine/globalTimetableValidator');
 const { gridToClassTimetables } = require('./engine/orchestrator');
 const {
   isLabSlot,
@@ -16,9 +18,12 @@ const {
 } = require('./engine/labGroupHelper');
 
 const EDIT_BLOCKING_TYPES = new Set([
+  'TEACHER_DOUBLE_BOOKED',
   'TEACHER_DOUBLE_BOOKING',
-  'ROOM_DOUBLE_BOOKING',
+  'CLASS_DOUBLE_BOOKED',
   'CLASS_DOUBLE_BOOKING',
+  'LAB_ROOM_CONFLICT',
+  'ROOM_DOUBLE_BOOKING',
   'TEACHER_UNAVAILABLE',
   'TEACHER_DAILY_LIMIT_EXCEEDED',
   'LAB_BLOCK_SPLIT',
@@ -27,18 +32,66 @@ const EDIT_BLOCKING_TYPES = new Set([
   'SLOT_OUT_OF_TIMELINE',
   'BREAK_SLOT_USED',
   'FRIDAY_P3_LAB_PROHIBITED',
+  'LAB_ROOM_MISMATCH',
+  'THEORY_CONSECUTIVE_PERIODS_VIOLATION',
+  'FIXED_SLOT_VIOLATION',
+  'FIXED_SLOT_CONFLICT',
+  'S6_OPEN_ELECTIVE_PROHIBITED_SLOT',
   'DAILY_SUBJECT_UNIQUENESS_VIOLATION',
   'ELECTIVE_DESYNCHRONIZATION',
   'MINOR_DESYNCHRONIZATION',
   'INVALID_SLOT_NO_TEACHER',
+  'SUBJECT_UNDER_SCHEDULED',
+  'SUBJECT_OVER_SCHEDULED',
 ]);
 
 function getBlockingViolations(val) {
   return (val.hardViolations || val.violations || []).filter(v => EDIT_BLOCKING_TYPES.has(v.type));
 }
 
-function isConflictFree(val) {
-  return getBlockingViolations(val).length === 0;
+function validateCandidateRebalance(grid, data) {
+  const valOut = validateOutput(grid, data, []);
+  const blockingValOut = (valOut.hardViolations || []).filter(v => EDIT_BLOCKING_TYPES.has(v.type));
+
+  const auditRes = auditTimetable(grid, data);
+  const auditBlocking = (auditRes.hardViolations || []).filter(v => EDIT_BLOCKING_TYPES.has(v.type));
+
+  const globalVal = validateGlobalTimetable(grid, data);
+  const globalBlocking = (globalVal.violations || [])
+    .filter(v => v.severity === 'hard' && EDIT_BLOCKING_TYPES.has(v.type || v.code));
+
+  const combinedHard = [
+    ...blockingValOut,
+    ...auditBlocking,
+    ...globalBlocking,
+  ];
+
+  const uniqueViolations = [];
+  const seen = new Set();
+  for (const v of combinedHard) {
+    const key = `${v.type || v.code}_${v.day}_${v.period}_${v.teacherId || ''}_${v.classId || ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueViolations.push(v);
+    }
+  }
+
+  const isFree = uniqueViolations.length === 0;
+  return {
+    isConflictFree: isFree,
+    hardViolations: uniqueViolations,
+    hardViolationsCount: uniqueViolations.length,
+    valOut,
+    auditRes,
+  };
+}
+
+function isConflictFree(val, grid = null, data = null) {
+  if (grid && data) {
+    return validateCandidateRebalance(grid, data).isConflictFree;
+  }
+  const blocking = (val.hardViolations || val.violations || []).filter(v => EDIT_BLOCKING_TYPES.has(v.type));
+  return blocking.length === 0 && val.valid !== false;
 }
 
 
@@ -90,6 +143,12 @@ async function simulateRebalance(timetableId, classId, source, target) {
     }
   }
 
+  const currentClass = (data.classes || []).find((c) => c._id.toString() === cid);
+  const isS8 = (currentClass?.name || '').includes('S8');
+  if (isS8 && (source.day === 'Thursday' || source.day === 'Friday' || target.day === 'Thursday' || target.day === 'Friday')) {
+    throw new Error('S8 CSE A and S8 CSE B are strictly reserved for Project Phase-2 (CST416) on Thursday and Friday. Rebalancing protected capstone slots is prohibited.');
+  }
+
   const group1 = findLabGroup(classSlots, source.day, Number(source.period));
   const group2 = findLabGroup(classSlots, target.day, Number(target.period));
 
@@ -122,8 +181,8 @@ async function simulateRebalance(timetableId, classId, source, target) {
     directGrid[cid][target.day][target.period] = { ...directGrid[cid][target.day][target.period], ...srcClone };
     directGrid[cid][source.day][source.period] = { ...directGrid[cid][source.day][source.period], ...tgtClone };
 
-    const directVal = validateOutput(directGrid, data, []);
-    if (isConflictFree(directVal)) {
+    const directValidation = validateCandidateRebalance(directGrid, data);
+    if (directValidation.isConflictFree) {
       return {
         canDirectSwap: true,
         canRebalance: true,
@@ -134,7 +193,7 @@ async function simulateRebalance(timetableId, classId, source, target) {
           requestedNewPeriod: { day: target.day, period: target.period, subject: tgtSlot.subjectName || tgtSlot.subjectCode || 'Empty Slot' },
           otherChanges: [],
           facultyAffected: Array.from(new Set([...(srcSlot.teacherNames || []), ...(tgtSlot.teacherNames || [])])),
-          classesAffected: [initialGrid[cid][source.day][source.period]?.className || cid],
+          classesAffected: [initialGrid[cid][source.day][source.period]?.className || currentClass?.name || cid],
           validationResult: { valid: true, hardViolationsCount: 0 },
         },
         rebalancedGrid: directGrid,
@@ -179,8 +238,8 @@ async function simulateRebalance(timetableId, classId, source, target) {
           ...altToSrc,
         };
 
-        const val = validateOutput(testGrid, data, []);
-        if (isConflictFree(val)) {
+        const testValidation = validateCandidateRebalance(testGrid, data);
+        if (testValidation.isConflictFree) {
           bestRebalanceGrid = testGrid;
           bestViolations = 0;
           rebalanceChanges = [
@@ -231,18 +290,31 @@ async function simulateRebalance(timetableId, classId, source, target) {
           requestedNewPeriod: { day: target.day, period: target.period, subject: tgtSlot.subjectName || tgtSlot.subjectCode || 'Empty Slot' },
           otherChanges: rebalanceChanges.filter((c) => !(c.day === target.day && c.period === target.period)),
           facultyAffected: Array.from(allFaculty),
-          classesAffected: [initialGrid[cid][source.day][source.period]?.className || cid],
+          classesAffected: [initialGrid[cid][source.day][source.period]?.className || currentClass?.name || cid],
           validationResult: { valid: true, hardViolationsCount: 0 },
         },
         rebalancedGrid: bestRebalanceGrid,
       };
     }
 
+    const firstConflict = directValidation.hardViolations[0];
+    const conflictDetail = firstConflict?.message || 'Faculty double-booking or constraint conflict';
     return {
       canDirectSwap: false,
       canRebalance: false,
-      reason: `Direct swap creates conflict (${directVal.violations[0]?.message || 'Teacher double-booking'}). No conflict-free adjustment exists without violating constraints.`,
-      violations: directVal.violations,
+      actionLabel: 'Auto-Adjust Unavailable',
+      reason: `Direct swap creates conflict (${conflictDetail}). Search evaluated all alternative periods in ${currentClass?.name || 'the class'}, but no conflict-free adjustment exists without violating constraints.`,
+      conflict: firstConflict ? {
+        type: firstConflict.type,
+        teacherId: firstConflict.teacherId,
+        teacherName: firstConflict.teacherName,
+        day: firstConflict.day,
+        period: firstConflict.period,
+        message: firstConflict.message,
+      } : null,
+      violations: directValidation.hardViolations,
+      rebalancedGrid: null,
+      preview: null,
     };
   }
 
@@ -254,7 +326,11 @@ async function simulateRebalance(timetableId, classId, source, target) {
       return {
         canDirectSwap: false,
         canRebalance: false,
+        actionLabel: 'Auto-Adjust Unavailable',
         reason: `Cannot swap laboratory of duration ${group1.duration} with laboratory of duration ${group2.duration}. Durations must match.`,
+        violations: [],
+        rebalancedGrid: null,
+        preview: null,
       };
     }
 
@@ -271,8 +347,8 @@ async function simulateRebalance(timetableId, classId, source, target) {
       directGrid[cid][s1.day][s1.period] = { ...directGrid[cid][s1.day][s1.period], ...p2 };
     }
 
-    const directVal = validateOutput(directGrid, data, []);
-    if (isConflictFree(directVal)) {
+    const directValidation = validateCandidateRebalance(directGrid, data);
+    if (directValidation.isConflictFree) {
       return {
         canDirectSwap: true,
         canRebalance: true,
@@ -283,18 +359,31 @@ async function simulateRebalance(timetableId, classId, source, target) {
           requestedNewPeriod: { day: target.day, period: target.period, subject: group2.subjectName || group2.subjectCode },
           otherChanges: [],
           facultyAffected: Array.from(new Set([...(group1.slots[0].teacherNames || []), ...(group2.slots[0].teacherNames || [])])),
-          classesAffected: [initialGrid[cid][source.day][source.period]?.className || cid],
+          classesAffected: [initialGrid[cid][source.day][source.period]?.className || currentClass?.name || cid],
           validationResult: { valid: true, hardViolationsCount: 0 },
         },
         rebalancedGrid: directGrid,
       };
     }
 
+    const firstConflict = directValidation.hardViolations[0];
+    const conflictDetail = firstConflict?.message || 'Faculty or Room double-booking';
     return {
       canDirectSwap: false,
       canRebalance: false,
-      reason: `Direct laboratory swap creates conflict (${directVal.violations[0]?.message || 'Teacher/Room conflict'}).`,
-      violations: directVal.violations,
+      actionLabel: 'Auto-Adjust Unavailable',
+      reason: `Direct laboratory swap creates conflict (${conflictDetail}).`,
+      conflict: firstConflict ? {
+        type: firstConflict.type,
+        teacherId: firstConflict.teacherId,
+        teacherName: firstConflict.teacherName,
+        day: firstConflict.day,
+        period: firstConflict.period,
+        message: firstConflict.message,
+      } : null,
+      violations: directValidation.hardViolations,
+      rebalancedGrid: null,
+      preview: null,
     };
   }
 
@@ -310,27 +399,27 @@ async function simulateRebalance(timetableId, classId, source, target) {
   const destEndP = destStartP + K - 1;
 
   if (destEndP > 6) {
-    return { canDirectSwap: false, canRebalance: false, reason: `Destination periods [P${destStartP}–P${destEndP}] exceed period 6.` };
+    return { canDirectSwap: false, canRebalance: false, actionLabel: 'Auto-Adjust Unavailable', reason: `Destination periods [P${destStartP}–P${destEndP}] exceed period 6.`, rebalancedGrid: null, preview: null };
   }
 
   if (destDay !== 'Friday' && destStartP <= 3 && destEndP >= 4) {
-    return { canDirectSwap: false, canRebalance: false, reason: 'Laboratory block cannot cross lunch break between P3 and P4.' };
+    return { canDirectSwap: false, canRebalance: false, actionLabel: 'Auto-Adjust Unavailable', reason: 'Laboratory block cannot cross lunch break between P3 and P4.', rebalancedGrid: null, preview: null };
   }
 
   if (destDay === 'Friday' && destStartP <= 4 && destEndP >= 5) {
-    return { canDirectSwap: false, canRebalance: false, reason: 'Laboratory block cannot cross Friday prayer/lunch break between P4 and P5.' };
+    return { canDirectSwap: false, canRebalance: false, actionLabel: 'Auto-Adjust Unavailable', reason: 'Laboratory block cannot cross Friday prayer/lunch break between P4 and P5.', rebalancedGrid: null, preview: null };
   }
 
   const isProj = ['CST416', 'CSD416'].includes(labGroup.subjectCode);
   if (destDay === 'Friday' && K >= 3 && !isProj) {
-    return { canDirectSwap: false, canRebalance: false, reason: '3-period laboratory cannot be scheduled on Friday (50-minute periods).' };
+    return { canDirectSwap: false, canRebalance: false, actionLabel: 'Auto-Adjust Unavailable', reason: '3-period laboratory cannot be scheduled on Friday (50-minute periods).', rebalancedGrid: null, preview: null };
   }
 
   const destSlots = [];
   for (let p = destStartP; p <= destEndP; p++) {
     const ds = initialGrid[cid][destDay]?.[p];
     if (!ds || ds.isBreak || ds.isLocked || isLabSlot(ds) || ds.isLabBlock) {
-      return { canDirectSwap: false, canRebalance: false, reason: `Destination slot at ${destDay} P${p} is invalid, locked, or a laboratory.` };
+      return { canDirectSwap: false, canRebalance: false, actionLabel: 'Auto-Adjust Unavailable', reason: `Destination slot at ${destDay} P${p} is invalid, locked, or a laboratory.`, rebalancedGrid: null, preview: null };
     }
     destSlots.push(ds);
   }
@@ -350,8 +439,8 @@ async function simulateRebalance(timetableId, classId, source, target) {
     directGrid[cid][labGroup.day][labGroup.startPeriod + i] = { ...directGrid[cid][labGroup.day][labGroup.startPeriod + i], ...pDst };
   }
 
-  const directVal = validateOutput(directGrid, data, []);
-  if (isConflictFree(directVal)) {
+  const directValidation = validateCandidateRebalance(directGrid, data);
+  if (directValidation.isConflictFree) {
     return {
       canDirectSwap: true,
       canRebalance: true,
@@ -369,7 +458,7 @@ async function simulateRebalance(timetableId, classId, source, target) {
           faculty: ds.teacherNames || [],
         })),
         facultyAffected: Array.from(new Set([...(labGroup.slots[0].teacherNames || []), ...destSlots.flatMap((s) => s.teacherNames || [])])),
-        classesAffected: [initialGrid[cid][source.day][source.period]?.className || cid],
+        classesAffected: [initialGrid[cid][source.day][source.period]?.className || currentClass?.name || cid],
         validationResult: { valid: true, hardViolationsCount: 0 },
       },
       rebalancedGrid: directGrid,
@@ -401,8 +490,8 @@ async function simulateRebalance(timetableId, classId, source, target) {
         testGrid[cid][labGroup.day][targetPeriodInLab] = { ...testGrid[cid][labGroup.day][targetPeriodInLab], ...altClone };
         testGrid[cid][altDay][altPeriod] = { ...testGrid[cid][altDay][altPeriod], ...dispToAlt };
 
-        const testVal = validateOutput(testGrid, data, []);
-        if (isConflictFree(testVal)) {
+        const testValidation = validateCandidateRebalance(testGrid, data);
+        if (testValidation.isConflictFree) {
           return {
             canDirectSwap: false,
             canRebalance: true,
@@ -430,7 +519,7 @@ async function simulateRebalance(timetableId, classId, source, target) {
                 },
               ],
               facultyAffected: Array.from(new Set([...(labGroup.slots[0].teacherNames || []), ...destSlots.flatMap((s) => s.teacherNames || []), ...(altSlot.teacherNames || [])])),
-              classesAffected: [initialGrid[cid][source.day][source.period]?.className || cid],
+              classesAffected: [initialGrid[cid][source.day][source.period]?.className || currentClass?.name || cid],
               validationResult: { valid: true, hardViolationsCount: 0 },
             },
             rebalancedGrid: testGrid,
@@ -440,11 +529,24 @@ async function simulateRebalance(timetableId, classId, source, target) {
     }
   }
 
+  const firstConflict = directValidation.hardViolations[0];
+  const conflictDetail = firstConflict?.message || 'Faculty double-booking or constraint violation';
   return {
     canDirectSwap: false,
     canRebalance: false,
-    reason: `Direct laboratory move creates conflict (${directVal.violations[0]?.message || 'Teacher double-booking'}). No conflict-free adjustment could be found without violating constraints.`,
-    violations: directVal.violations,
+    actionLabel: 'Auto-Adjust Unavailable',
+    reason: `Direct laboratory move creates conflict (${conflictDetail}). No conflict-free adjustment could be found without violating constraints.`,
+    conflict: firstConflict ? {
+      type: firstConflict.type,
+      teacherId: firstConflict.teacherId,
+      teacherName: firstConflict.teacherName,
+      day: firstConflict.day,
+      period: firstConflict.period,
+      message: firstConflict.message,
+    } : null,
+    violations: directValidation.hardViolations,
+    rebalancedGrid: null,
+    preview: null,
   };
 }
 
@@ -456,17 +558,40 @@ async function commitRebalance(timetableId, classId, source, target, rebalancedG
   if (!timetable) throw new Error('Timetable version not found');
 
   const data = await loadData({});
-  const val = validateOutput(rebalancedGrid, data, []);
-  if (!isConflictFree(val)) {
-    throw new Error(`Rebalance validation failed: ${getBlockingViolations(val)[0]?.message || 'Conflict detected'}`);
+  const currentClass = (data.classes || []).find((c) => c._id.toString() === classId.toString());
+  const isS8 = (currentClass?.name || '').includes('S8');
+  if (isS8 && (source.day === 'Thursday' || source.day === 'Friday' || target.day === 'Thursday' || target.day === 'Friday')) {
+    throw new Error('S8 CSE A and S8 CSE B are strictly reserved for Project Phase-2 (CST416) on Thursday and Friday. Rebalancing protected capstone slots is prohibited.');
   }
+
+  const validation = validateCandidateRebalance(rebalancedGrid, data);
+  if (!validation.isConflictFree) {
+    const conflictMsg = validation.hardViolations[0]?.message || 'Faculty collision or constraint violation detected';
+    throw new Error(`Rebalance validation failed: ${conflictMsg}`);
+  }
+
+  const originalClassTimetables = JSON.parse(JSON.stringify(timetable.classTimetables));
+  const currentRevision = timetable.revision || 1;
 
   const classes = await Class.find().lean();
   const updatedClassTimetables = gridToClassTimetables(rebalancedGrid, classes);
 
   timetable.classTimetables = updatedClassTimetables;
-  timetable.revision = (timetable.revision || 1) + 1;
+  timetable.revision = currentRevision + 1;
   timetable.updatedAt = new Date();
+  timetable.undoStack = timetable.undoStack || [];
+  timetable.undoStack.push({
+    timestamp: new Date(),
+    action: 'rebalance',
+    description: 'Conflict-Free Rebalance',
+    classTimetables: originalClassTimetables,
+    revision: currentRevision,
+  });
+  if (timetable.undoStack.length > 50) timetable.undoStack.shift();
+  timetable.redoStack = [];
+  timetable.markModified('undoStack');
+  timetable.markModified('redoStack');
+
   timetable.editHistory.push({
     action: 'rebalance',
     classId,

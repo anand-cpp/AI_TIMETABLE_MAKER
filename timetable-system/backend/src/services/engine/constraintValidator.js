@@ -31,20 +31,83 @@ const HARD_VIOLATION_TYPES = [
 
 const isHardViolation = (type) => HARD_VIOLATION_TYPES.includes(type);
 
-const slotTeacherIds = (slot) => {
-  const ids = [];
-  if (!slot) return ids;
+const slotTeacherIds = (slot, teacherMap = {}, teacherNameToIdMap = {}) => {
+  const ids = new Set();
+  if (!slot || slot.isEmpty || slot.isBreak) return [];
+
+  // 1. Direct array of IDs
   if (Array.isArray(slot.teacherIds)) {
-    slot.teacherIds.forEach((id) => id && ids.push(id.toString()));
+    slot.teacherIds.forEach((id) => {
+      if (id) {
+        const idStr = typeof id === 'object' ? (id._id?.toString() || id.toString()) : id.toString();
+        if (idStr) ids.add(idStr);
+      }
+    });
   }
+
+  // 2. Teachers array (objects or IDs)
+  if (Array.isArray(slot.teachers)) {
+    slot.teachers.forEach((t) => {
+      if (t) {
+        const idStr = typeof t === 'object' ? (t._id?.toString() || t.toString()) : t.toString();
+        if (idStr) ids.add(idStr);
+        if (typeof t === 'object' && t.name) {
+          const canonId = teacherNameToIdMap[t.name.trim().toLowerCase()];
+          if (canonId) ids.add(canonId);
+        }
+      }
+    });
+  }
+
+  // 3. Singular teacherId
+  if (slot.teacherId) {
+    const idStr = typeof slot.teacherId === 'object' ? (slot.teacherId._id?.toString() || slot.teacherId.toString()) : slot.teacherId.toString();
+    if (idStr) ids.add(idStr);
+  }
+
+  // 4. Co-instructors
   if (Array.isArray(slot.coInstructorIds)) {
-    slot.coInstructorIds.forEach((id) => id && ids.push(id.toString()));
+    slot.coInstructorIds.forEach((id) => {
+      if (id) {
+        const idStr = typeof id === 'object' ? (id._id?.toString() || id.toString()) : id.toString();
+        if (idStr) ids.add(idStr);
+      }
+    });
   }
+
+  // 5. Batch split teachers
   if (slot.isBatchSplit) {
-    if (slot.batch1?.teacherId) ids.push(slot.batch1.teacherId.toString());
-    if (slot.batch2?.teacherId) ids.push(slot.batch2.teacherId.toString());
+    if (slot.batch1?.teacherId) {
+      const b1Id = typeof slot.batch1.teacherId === 'object' ? (slot.batch1.teacherId._id?.toString() || slot.batch1.teacherId.toString()) : slot.batch1.teacherId.toString();
+      if (b1Id) ids.add(b1Id);
+    }
+    if (slot.batch2?.teacherId) {
+      const b2Id = typeof slot.batch2.teacherId === 'object' ? (slot.batch2.teacherId._id?.toString() || slot.batch2.teacherId.toString()) : slot.batch2.teacherId.toString();
+      if (b2Id) ids.add(b2Id);
+    }
+    if (slot.batch1?.teacherName && teacherNameToIdMap[slot.batch1.teacherName.trim().toLowerCase()]) {
+      ids.add(teacherNameToIdMap[slot.batch1.teacherName.trim().toLowerCase()]);
+    }
+    if (slot.batch2?.teacherName && teacherNameToIdMap[slot.batch2.teacherName.trim().toLowerCase()]) {
+      ids.add(teacherNameToIdMap[slot.batch2.teacherName.trim().toLowerCase()]);
+    }
   }
-  return [...new Set(ids)];
+
+  // 6. Name-based resolution as canonical fallback
+  const names = [];
+  if (Array.isArray(slot.teacherNames)) {
+    slot.teacherNames.forEach((n) => n && names.push(n.trim()));
+  }
+  if (typeof slot.teacherName === 'string' && slot.teacherName.trim()) {
+    names.push(slot.teacherName.trim());
+  }
+  names.forEach((name) => {
+    const norm = name.toLowerCase();
+    const canonId = teacherNameToIdMap[norm];
+    if (canonId) ids.add(canonId);
+  });
+
+  return [...ids].filter(Boolean);
 };
 
 const slotRoomNames = (slot) => {
@@ -91,22 +154,32 @@ const isDailyUniquenessExempt = (slot) => {
 };
 
 
-const sharedElectiveToken = (slot) => {
+const sharedElectiveToken = (slot, teacherId = null) => {
   if (!slot || slot.isEmpty || slot.isBreak) return null;
-  // Strict shared-session authorization:
-  // 1. Explicit sharedSessionId linking participating classes
-  if (slot.sharedSessionId) return String(slot.sharedSessionId);
-  // 2. Synchronized elective group
-  if (slot.isElective && slot.electiveGroupId) return 'SHARED_ELECTIVE_' + slot.electiveGroupId;
-  // Synchronized Minor session
+
+  // 1. Authorized S8 Capstone Project Phase-2 joint supervision on Thursday/Friday
+  const isCapstoneCode = slot.subjectCode === 'CST416' || slot.subjectCode === 'CSD416';
+  const isThuFri = slot.day === 'Thursday' || slot.day === 'Friday';
+  if ((isCapstoneCode || slot.isSharedProject) && isThuFri) {
+    const isDrGuna = !teacherId || teacherId === '6aeccf3cbb1e84200c3db02b' ||
+      (slot.teacherNames || []).some(n => n.includes('Gunasekaran')) ||
+      (slot.teacherIds || []).includes('6aeccf3cbb1e84200c3db02b');
+    if (isDrGuna) {
+      return slot.sharedSessionId || ('SHARED_S8_PROJECT_' + (slot.day || '').toUpperCase().slice(0, 3) + '_P' + (slot.period || ''));
+    }
+  }
+
+  // 2. Synchronized elective group (must be elective with same electiveGroupId AND same subjectCode)
+  if (slot.isElective && slot.electiveGroupId) {
+    return 'SHARED_ELECTIVE_' + slot.electiveGroupId + '_' + (slot.subjectCode || '');
+  }
+
+  // 3. Synchronized Minor session (must be minor with same minorGroupId AND same subjectCode)
   if (slot.isMinor || slot.subjectType === 'minor') {
-    return 'SHARED_MINOR_' + (slot.minorGroupId || (slot.day + '_P' + slot.period));
+    return 'SHARED_MINOR_' + (slot.minorGroupId || (slot.day + '_P' + slot.period)) + '_' + (slot.minorSubjectCode || slot.subjectCode || '');
   }
-  // 3. S8 Project Phase-2 authorized joint supervision on Thursday/Friday
-  if ((slot.subjectCode === 'CST416' || slot.subjectCode === 'CSD416' || slot.isSharedProject) && (slot.day === 'Thursday' || slot.day === 'Friday')) {
-    return 'SHARED_S8_PROJECT_' + (slot.day || '').toUpperCase().slice(0, 3) + '_P' + (slot.period || '');
-  }
-  // Ordinary theory/lab subjects NEVER qualify as shared sessions
+
+  // Ordinary theory/lab subjects NEVER qualify as shared sessions regardless of sharedSessionId metadata
   return null;
 };
 
@@ -127,6 +200,18 @@ const validateGrid = (grid, data) => {
     adminOverrides = {},
     classMap = {},
   } = data;
+
+  const teacherNameToIdMap = {};
+  for (const [tid, t] of Object.entries(teacherMap || {})) {
+    if (t && t.name) {
+      teacherNameToIdMap[t.name.trim().toLowerCase()] = tid;
+    }
+  }
+  for (const t of (data.teachers || [])) {
+    if (t && t.name && t._id) {
+      teacherNameToIdMap[t.name.trim().toLowerCase()] = t._id.toString();
+    }
+  }
 
   const teacherDailyLimitOverrides = adminOverrides.teacherDailyLimitOverrides || {};
   const teacherUnavailabilityOverrides = adminOverrides.teacherUnavailabilityOverrides || [];
@@ -179,7 +264,7 @@ const validateGrid = (grid, data) => {
 
         // 3. Teaching slot without any assigned teacher
         const realSubject = ['theory', 'lab', 'elective'].includes(slot.subjectType);
-        if (realSubject && slotTeacherIds(slot).length === 0 && !slot.isPendingFaculty && !slot.teacherNames?.includes('PENDING')) {
+        if (realSubject && slotTeacherIds(slot, teacherMap, teacherNameToIdMap).length === 0 && !slot.isPendingFaculty && !slot.teacherNames?.includes('PENDING')) {
           violations.push({
             type: 'INVALID_SLOT_NO_TEACHER',
             message: `Class ${classId}: ${day} P${period} has '${slot.subjectName || slot.subjectType}' but no valid teacher`,
@@ -188,17 +273,17 @@ const validateGrid = (grid, data) => {
         }
 
         // 4. Teacher double-booking + unavailability
-        for (const teacherId of slotTeacherIds(slot)) {
+        for (const teacherId of slotTeacherIds(slot, teacherMap, teacherNameToIdMap)) {
           if (!teacherSchedule[teacherId]) teacherSchedule[teacherId] = {};
           if (!teacherSchedule[teacherId][day]) teacherSchedule[teacherId][day] = [];
 
           const existingClaim = teacherSchedule[teacherId][day].find((c) => c.period === period);
-          const token = sharedElectiveToken(slot);
+          const token = sharedElectiveToken(slot, teacherId);
 
           if (existingClaim) {
             const sharedSession =
               token && existingClaim.token && token === existingClaim.token;
-            if (existingClaim.classId !== classId && !sharedSession && !slot.isOverride) {
+            if (existingClaim.classId !== classId && !sharedSession) {
               const teacher = teacherMap[teacherId];
               violations.push({
                 type: 'TEACHER_DOUBLE_BOOKED',
@@ -1041,7 +1126,15 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
     return false;
   }
 
-  const teacherIds = slotTeacherIds(slot);
+  const teacherNameToIdMap = {};
+  for (const [tid, t] of Object.entries(teacherMap || {})) {
+    if (t && t.name) teacherNameToIdMap[t.name.trim().toLowerCase()] = tid;
+  }
+  for (const t of (data.teachers || [])) {
+    if (t && t.name && t._id) teacherNameToIdMap[t.name.trim().toLowerCase()] = t._id.toString();
+  }
+
+  const teacherIds = slotTeacherIds(slot, teacherMap, teacherNameToIdMap);
 
   for (const teacherId of teacherIds) {
     const teacher = teacherMap[teacherId];
@@ -1065,9 +1158,9 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
       if (otherClassId === classId) continue;
       const existingSlot = dayMap[day]?.[period];
       if (!isOccupied(existingSlot)) continue;
-      if (slotTeacherIds(existingSlot).includes(teacherId)) {
-        const token1 = sharedElectiveToken(slot);
-        const token2 = sharedElectiveToken(existingSlot);
+      if (slotTeacherIds(existingSlot, teacherMap, teacherNameToIdMap).includes(teacherId)) {
+        const token1 = sharedElectiveToken(slot, teacherId);
+        const token2 = sharedElectiveToken(existingSlot, teacherId);
         if (!token1 || !token2 || token1 !== token2) return false;
       }
     }

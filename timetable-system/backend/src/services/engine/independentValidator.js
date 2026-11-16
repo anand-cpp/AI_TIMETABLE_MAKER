@@ -14,6 +14,78 @@
 const { validateGlobalLabOccupancy, validateLabEligibility } = require('./labValidationService');
 const { arePeriodsConsecutiveWithoutRest } = require('./constraintValidator');
 
+const extractSlotTeacherIds = (slot, teacherMap = {}, teacherNameToIdMap = {}) => {
+  const ids = new Set();
+  if (!slot || slot.isEmpty || slot.isBreak) return [];
+  if (Array.isArray(slot.teacherIds)) {
+    slot.teacherIds.forEach(id => {
+      if (id) ids.add(typeof id === 'object' ? (id._id?.toString() || id.toString()) : id.toString());
+    });
+  }
+  if (Array.isArray(slot.teachers)) {
+    slot.teachers.forEach(t => {
+      if (t) {
+        ids.add(typeof t === 'object' ? (t._id?.toString() || t.toString()) : t.toString());
+        if (typeof t === 'object' && t.name && teacherNameToIdMap[t.name.trim().toLowerCase()]) {
+          ids.add(teacherNameToIdMap[t.name.trim().toLowerCase()]);
+        }
+      }
+    });
+  }
+  if (slot.teacherId) {
+    ids.add(typeof slot.teacherId === 'object' ? (slot.teacherId._id?.toString() || slot.teacherId.toString()) : slot.teacherId.toString());
+  }
+  if (Array.isArray(slot.coInstructorIds)) {
+    slot.coInstructorIds.forEach(id => {
+      if (id) ids.add(typeof id === 'object' ? (id._id?.toString() || id.toString()) : id.toString());
+    });
+  }
+  if (slot.isBatchSplit) {
+    if (slot.batch1?.teacherId) ids.add(slot.batch1.teacherId.toString());
+    if (slot.batch2?.teacherId) ids.add(slot.batch2.teacherId.toString());
+    if (slot.batch1?.teacherName && teacherNameToIdMap[slot.batch1.teacherName.trim().toLowerCase()]) {
+      ids.add(teacherNameToIdMap[slot.batch1.teacherName.trim().toLowerCase()]);
+    }
+    if (slot.batch2?.teacherName && teacherNameToIdMap[slot.batch2.teacherName.trim().toLowerCase()]) {
+      ids.add(teacherNameToIdMap[slot.batch2.teacherName.trim().toLowerCase()]);
+    }
+  }
+  const names = [];
+  if (Array.isArray(slot.teacherNames)) slot.teacherNames.forEach(n => n && names.push(n.trim()));
+  if (typeof slot.teacherName === 'string' && slot.teacherName.trim()) names.push(slot.teacherName.trim());
+  names.forEach(name => {
+    const canonId = teacherNameToIdMap[name.toLowerCase()];
+    if (canonId) ids.add(canonId);
+  });
+  return [...ids].filter(Boolean);
+};
+
+const isAuthorizedSharedSessionGroup = (allocs, day, period, teacherId) => {
+  if (!allocs || allocs.length <= 1) return true;
+  const sid = allocs[0].sharedSessionId;
+  if (!sid || !allocs.every(a => a.sharedSessionId === sid)) return false;
+
+  // Case 1: S8 Capstone Project Phase-2
+  const isThuFri = day === 'Thursday' || day === 'Friday';
+  const allCapstone = allocs.every(a => a.subjectCode === 'CST416' || a.subjectCode === 'CSD416' || a.isSharedProject);
+  if (allCapstone && isThuFri) {
+    const isDrGuna = teacherId === '6aeccf3cbb1e84200c3db02b' || allocs.some(a => (a.teacherName || '').includes('Gunasekaran'));
+    const allS8 = allocs.every(a => (a.className || '').includes('S8'));
+    if (isDrGuna && allS8) return true;
+  }
+
+  // Case 2: Synchronized Elective (all must be elective with same electiveGroupId AND same subjectCode)
+  const allElective = allocs.every(a => a.isElective && a.electiveGroupId && a.subjectCode === allocs[0].subjectCode);
+  if (allElective) return true;
+
+  // Case 3: Synchronized Minor (all must be minor with same minorGroupId AND same subjectCode)
+  const allMinor = allocs.every(a => (a.isMinor || a.subjectType === 'minor') && a.subjectCode === allocs[0].subjectCode);
+  if (allMinor) return true;
+
+  // Ordinary theory/lab subjects can NEVER be shared
+  return false;
+};
+
 /**
  * Perform ground-truth independent mathematical and constraint audit
  */
@@ -31,6 +103,14 @@ function auditTimetable(grid, data, options = {}) {
   const teacherMap = {};
   for (const t of teachers) teacherMap[t._id.toString()] = t;
 
+  const teacherNameToIdMap = {};
+  for (const [tid, t] of Object.entries(teacherMap)) {
+    if (t && t.name) teacherNameToIdMap[t.name.trim().toLowerCase()] = tid;
+  }
+  for (const t of teachers) {
+    if (t && t.name && t._id) teacherNameToIdMap[t.name.trim().toLowerCase()] = t._id.toString();
+  }
+
   const hardViolations = [];
   const softWarnings = [];
 
@@ -47,7 +127,7 @@ function auditTimetable(grid, data, options = {}) {
         const period = Number(periodStr);
         if (!slot || slot.isEmpty || slot.isBreak || !slot.subjectCode) continue;
 
-        const tIds = (slot.teacherIds || []).map((id) => (id._id ? id._id.toString() : id.toString()));
+        const tIds = extractSlotTeacherIds(slot, teacherMap, teacherNameToIdMap);
         for (const tid of tIds) {
           if (!teacherOccupancy[tid]) teacherOccupancy[tid] = {};
           if (!teacherOccupancy[tid][day]) teacherOccupancy[tid][day] = {};
@@ -61,9 +141,14 @@ function auditTimetable(grid, data, options = {}) {
             subjectCode: slot.subjectCode,
             subjectName: slot.subjectName,
             isElective: !!slot.isElective,
+            electiveGroupId: slot.electiveGroupId || '',
+            isMinor: !!slot.isMinor || slot.subjectType === 'minor',
+            minorGroupId: slot.minorGroupId || '',
+            isSharedProject: !!slot.isSharedProject,
             sharedSessionId: slot.sharedSessionId || null,
             roomName: slot.roomName,
             isLabBlock: !!slot.isLabBlock,
+            teacherName: teacherMap[tid]?.name || slot.teacherNames?.[0] || `Teacher ${tid}`,
           });
         }
       }
@@ -78,8 +163,8 @@ function auditTimetable(grid, data, options = {}) {
         const period = Number(periodStr);
         if (allocs.length > 1) {
           // Check if authorized shared session (e.g. synchronized linked elective or capstone)
-          const allShared = allocs.every((a) => a.sharedSessionId && a.sharedSessionId === allocs[0].sharedSessionId);
-          if (!allShared) {
+          const isAuthShared = isAuthorizedSharedSessionGroup(allocs, day, period, tid);
+          if (!isAuthShared) {
             const classList = allocs.map((a) => `${a.className} (${a.subjectName})`).join(' and ');
             hardViolations.push({
               type: 'TEACHER_DOUBLE_BOOKED',
@@ -97,34 +182,38 @@ function auditTimetable(grid, data, options = {}) {
     }
   }
 
-  // 1B. Detect Faculty Consecutive Teaching Violation (Max 2 consecutive; 3 strictly prohibited)
+  // 1B. Detect Faculty Consecutive Teaching Violation (Rule A: Max 3 consecutive allowed; 4+ strictly prohibited)
   for (const [tid, days] of Object.entries(teacherOccupancy)) {
     const teacherName = teacherMap[tid]?.name || `Teacher ${tid}`;
     for (const [day, periodsMap] of Object.entries(days)) {
       const sortedPeriods = Object.keys(periodsMap).map(Number).sort((a, b) => a - b);
-      for (let i = 0; i < sortedPeriods.length - 2; i++) {
+      for (let i = 0; i < sortedPeriods.length - 3; i++) {
         const p1 = sortedPeriods[i];
         const p2 = sortedPeriods[i + 1];
         const p3 = sortedPeriods[i + 2];
+        const p4 = sortedPeriods[i + 3];
 
-        if (arePeriodsConsecutiveWithoutRest(p1, p2, day) && arePeriodsConsecutiveWithoutRest(p2, p3, day)) {
-          // Check if all 3 periods belong to the same atomic practical lab block or capstone project
+        if (
+          arePeriodsConsecutiveWithoutRest(p1, p2, day) &&
+          arePeriodsConsecutiveWithoutRest(p2, p3, day) &&
+          arePeriodsConsecutiveWithoutRest(p3, p4, day)
+        ) {
+          // Check if all 4 periods belong to legitimate authorized capstone block for Dr S Gunasekaran
+          const isGuna = tid === '6aeccf3cbb1e84200c3db02b' || teacherName.includes('Gunasekaran');
+          const isThuFri = day === 'Thursday' || day === 'Friday';
           const s1 = (periodsMap[p1] || [])[0];
           const s2 = (periodsMap[p2] || [])[0];
           const s3 = (periodsMap[p3] || [])[0];
+          const s4 = (periodsMap[p4] || [])[0];
 
-          const isSameLabBlock = s1 && s2 && s3 &&
-            s1.isLabBlock && s2.isLabBlock && s3.isLabBlock &&
-            s1.subjectCode && s1.subjectCode === s2.subjectCode && s2.subjectCode === s3.subjectCode &&
-            s1.classId === s2.classId && s2.classId === s3.classId;
-
-          const isSameProject = s1 && s2 && s3 &&
-            (s1.subjectCode === 'CST416' || s1.subjectCode === 'CSD416' || s1.subjectName?.includes('Project Phase')) &&
-            (s2.subjectCode === 'CST416' || s2.subjectCode === 'CSD416' || s2.subjectName?.includes('Project Phase')) &&
-            (s3.subjectCode === 'CST416' || s3.subjectCode === 'CSD416' || s3.subjectName?.includes('Project Phase'));
-
-          if (isSameLabBlock || isSameProject) {
-            continue; // Legitimate atomic practical block or capstone project
+          const isCapstone =
+            isGuna &&
+            isThuFri &&
+            [s1, s2, s3, s4].every(
+              (s) => s && (s.subjectCode === 'CST416' || s.subjectCode === 'CSD416' || s.isSharedProject)
+            );
+          if (isCapstone) {
+            continue; // Authorized shared capstone project
           }
 
           hardViolations.push({
@@ -133,8 +222,8 @@ function auditTimetable(grid, data, options = {}) {
             teacherId: tid,
             teacherName,
             day,
-            periods: [p1, p2, p3],
-            message: `Faculty member ${teacherName} has 3 consecutive teaching periods on ${day} (Periods P${p1}–P${p3}) without a rest gap. A guaranteed rest gap is required after at most 2 consecutive periods.`,
+            periods: [p1, p2, p3, p4],
+            message: `Faculty member ${teacherName} has 4 or more consecutive teaching periods on ${day} (Periods P${p1}–P${p4}) without a rest gap. Rule A requires a rest gap after at most 3 consecutive periods.`,
           });
         }
       }

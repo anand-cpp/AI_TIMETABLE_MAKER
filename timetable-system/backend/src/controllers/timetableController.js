@@ -1479,22 +1479,6 @@ const applyRebalance = async (req, res) => {
       return sendError(res, 400, 'classId, source, target, and rebalancedGrid are required');
     }
     const { commitRebalance } = require('../services/rebalanceService');
-    const timetable = await Timetable.findById(req.params.id);
-    if (timetable) {
-      timetable.undoStack = timetable.undoStack || [];
-      timetable.undoStack.push({
-        timestamp: new Date(),
-        action: 'rebalance',
-        description: 'Conflict-Free Rebalance',
-        classTimetables: JSON.parse(JSON.stringify(timetable.classTimetables)),
-        revision: timetable.revision || 1,
-      });
-      if (timetable.undoStack.length > 50) timetable.undoStack.shift();
-      timetable.redoStack = [];
-      timetable.markModified('undoStack');
-      timetable.markModified('redoStack');
-      await timetable.save();
-    }
     const result = await commitRebalance(
       req.params.id,
       classId,
