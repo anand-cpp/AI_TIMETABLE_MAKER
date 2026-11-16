@@ -6,6 +6,9 @@ const { placeAllSubjects } = require('./slotPlacer');
 const { optimizeGrid } = require('./softOptimizer');
 const { scoreGrid } = require('./qualityScorer');
 const { validateOutput } = require('./constraintValidator');
+const { validateGlobalTimetable } = require('./globalTimetableValidator');
+const { optimizeFacultyTimetable } = require('./facultyPersonalTimetableOptimizer');
+const { scoreFacultyQuality } = require('./facultyTimetableScorer');
 
 /**
  * Helper to convert grid object to classTimetables array format
@@ -182,6 +185,32 @@ const run = async (options = {}) => {
       console.warn('⚠️ Soft optimizer warning:', optErr.message);
     }
 
+    // Phase 2: Faculty Personal Timetable Rest & Break Optimization
+    let facultyOptimization = null;
+    if (!options.skipFacultyOptimization) {
+      try {
+        const facOpt = optimizeFacultyTimetable(finalGrid, data, options);
+        if (facOpt.success && facOpt.grid) {
+          const facVal = validateOutput(facOpt.grid, data, unplacedSubjects);
+          const globalVal = validateGlobalTimetable(facOpt.grid, data);
+          if (facVal.valid && facVal.hardViolationsCount <= bestOutputValidation.hardViolationsCount && globalVal.valid && globalVal.hardViolationsCount === 0) {
+            finalGrid = facOpt.grid;
+            facultyOptimization = {
+              improved: facOpt.improved,
+              baselineScore: facOpt.baselineScore,
+              finalScore: facOpt.finalScore,
+              baselineMetrics: facOpt.baselineMetrics,
+              finalMetrics: facOpt.finalMetrics,
+              totalMovesAccepted: facOpt.totalMovesAccepted,
+              repairsAuditTrail: facOpt.repairsAuditTrail,
+            };
+          }
+        }
+      } catch (facErr) {
+        console.warn('⚠️ Faculty optimizer notice:', facErr.message);
+      }
+    }
+
     const outputValidation = validateOutput(finalGrid, data, unplacedSubjects);
     const hardViolations = outputValidation.hardViolationsCount || 0;
     const softViolations = outputValidation.softViolationsCount || 0;
@@ -196,6 +225,7 @@ const run = async (options = {}) => {
     }
 
     const qualityScore = scoreGrid(finalGrid, data);
+    const facultyQualityScore = scoreFacultyQuality(finalGrid, data);
 
     const classTimetables = gridToClassTimetables(finalGrid, classes);
     const timeMs = Date.now() - startTime;
@@ -209,6 +239,8 @@ const run = async (options = {}) => {
       publishable: isComplete,
       classTimetables,
       qualityScore,
+      facultyQualityScore,
+      facultyOptimization,
       validationChecks: {
         ...outputValidation.checks,
         hardViolationsCount: hardViolations,

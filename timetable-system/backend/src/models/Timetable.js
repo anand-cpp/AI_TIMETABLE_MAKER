@@ -145,6 +145,8 @@ const timetableSchema = new mongoose.Schema(
       breakdown: { type: mongoose.Schema.Types.Mixed, default: [] },
       issues: { type: mongoose.Schema.Types.Mixed, default: [] },
     },
+    facultyQualityScore: { type: mongoose.Schema.Types.Mixed, default: null },
+    facultyOptimization: { type: mongoose.Schema.Types.Mixed, default: null },
     classTimetables: [classTimetableSchema],
     isComplete: { type: Boolean, default: false },
     validationChecks: { type: mongoose.Schema.Types.Mixed, default: {} },

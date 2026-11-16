@@ -6,6 +6,7 @@ const {
   getVersion,
   getAccepted,
   getTeacherTimetable,
+  getFacultyAnalysis,
   generateTimetable,
   acceptVersion,
   unacceptVersion,
@@ -21,6 +22,8 @@ const {
   saveTeacherAvailability,
   previewRebalance,
   applyRebalance,
+  previewFacultyOptimization,
+  applyFacultyOptimization,
   undoLastAction,
   redoLastAction,
   getHistoryStatus,
@@ -56,6 +59,8 @@ router.get('/versions/:id/history', authenticate, requireAdmin, getEditHistory);
 router.get('/versions/:id/history-status', authenticate, requireAdmin, getHistoryStatus);
 router.get('/versions/:id/readiness', authenticate, requireAdmin, getWorkloadReadiness);
 router.get('/versions/:id/diagnostics', authenticate, requireAdmin, getTimetableDiagnostics);
+router.get('/faculty-analysis', authenticate, requireAdmin, getFacultyAnalysis);
+router.get('/versions/:id/faculty-analysis', authenticate, requireAdmin, getFacultyAnalysis);
 router.get('/cross-dept-teachers/:departmentId', authenticate, requireAdmin, getCrossDeptTeachers);
 router.post('/teacher-availability', authenticate, requireAdmin, saveTeacherAvailability);
 
@@ -82,5 +87,11 @@ router.post('/versions/:id/redo', authenticate, requireAdmin, redoLastAction);
 // Admin only - rebalance
 router.post('/versions/:id/rebalance/preview', authenticate, requireAdmin, previewRebalance);
 router.post('/versions/:id/rebalance/commit', authenticate, requireAdmin, applyRebalance);
+
+// Admin only - faculty personal timetable optimization (controlled preview & apply)
+router.post('/versions/:id/faculty-optimization/preview', authenticate, requireAdmin, previewFacultyOptimization);
+router.post('/versions/:id/faculty-optimization/apply', authenticate, requireAdmin, applyFacultyOptimization);
+router.post('/faculty-optimization/preview', authenticate, requireAdmin, previewFacultyOptimization);
+router.post('/faculty-optimization/apply', authenticate, requireAdmin, applyFacultyOptimization);
 
 module.exports = router;

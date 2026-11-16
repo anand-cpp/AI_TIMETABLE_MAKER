@@ -116,6 +116,19 @@ const timetableService = {
     return res.data;
   },
 
+  // Faculty Personal Timetable Break Optimization
+  previewFacultyOptimization: async (id, data = {}) => {
+    const url = id ? `/timetable/versions/${id}/faculty-optimization/preview` : '/timetable/faculty-optimization/preview';
+    const res = await api.post(url, data);
+    return res.data;
+  },
+
+  applyFacultyOptimization: async (id, data) => {
+    const url = id ? `/timetable/versions/${id}/faculty-optimization/apply` : '/timetable/faculty-optimization/apply';
+    const res = await api.post(url, data);
+    return res.data;
+  },
+
   // Undo & Redo (Phase 6)
   undo: async (id) => {
     const res = await api.post(`/timetable/versions/${id}/undo`);

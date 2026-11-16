@@ -7,6 +7,12 @@ const { sendSuccess, sendError } = require('../utils/responseHelpers');
 const orchestrator = require('../services/engine/orchestrator');
 const { computeTeacherMetrics } = require('../services/engine/teacherPersonalTimetableValidator');
 const {
+  analyzeFacultyPersonalTimetable,
+  analyzeAllFacultyPersonalTimetables,
+  validateFacultyScheduleAgreement,
+  buildAuthoritativeFacultySchedules,
+} = require('../services/engine/facultyPersonalTimetableAnalyzer');
+const {
   validatePersistedTimetable,
   summarizeViolations,
 } = require('../services/engine/persistedValidator');
@@ -299,6 +305,9 @@ const getTeacherTimetable = async (req, res) => {
     }
     const metrics = computeTeacherMetrics(teacher, fullGrid, { classes: allDbClasses });
 
+    const teacherMapRecord = buildAuthoritativeFacultySchedules(timetable, [teacher], allDbClasses).get(teacherId.toString());
+    const facultyAnalysis = teacherMapRecord ? analyzeFacultyPersonalTimetable(teacherMapRecord) : null;
+
     const summary = {
       teacherName: teacher.name,
       department: teacher.departmentId?.name || teacher.department || 'Computer Science and Engineering',
@@ -331,11 +340,45 @@ const getTeacherTimetable = async (req, res) => {
       teacher,
       summary,
       metrics,
+      facultyAnalysis,
       scheduleGrid,
       slots: scheduledSlots,
       timetable: scheduleGrid,
       generatedAt: timetable.generatedAt,
       version: timetable.version,
+    });
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
+// GET Comprehensive Faculty Personal Timetable Analysis (GET /api/timetable/faculty-analysis)
+const getFacultyAnalysis = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let timetable = null;
+    if (id) {
+      timetable = await Timetable.findById(id);
+    }
+    if (!timetable) {
+      timetable = await Timetable.findOne({ isAccepted: true }) || await Timetable.findOne().sort({ version: -1 });
+    }
+    if (!timetable) {
+      return sendError(res, 404, 'No timetable available yet');
+    }
+
+    const allTeachers = await Teacher.find().populate('departmentId').lean();
+    const allDbClasses = await Class.find().lean();
+
+    const analysis = analyzeAllFacultyPersonalTimetables(timetable, allTeachers, allDbClasses);
+    const agreement = validateFacultyScheduleAgreement(timetable, allDbClasses, allTeachers);
+
+    return sendSuccess(res, 200, {
+      version: timetable.version,
+      summary: analysis.summary,
+      facultyProfiles: analysis.facultyProfiles,
+      findings: analysis.findings,
+      agreement,
     });
   } catch (error) {
     return sendError(res, 500, error.message);
@@ -439,6 +482,8 @@ const generateTimetable = async (req, res) => {
       publicationGatePassed: !!engineResult.isComplete,
       classTimetables: engineResult.classTimetables,
       qualityScore: engineResult.qualityScore,
+      facultyQualityScore: engineResult.facultyQualityScore || null,
+      facultyOptimization: engineResult.facultyOptimization || null,
       validationChecks: engineResult.validationChecks || {},
       autoFillStats: engineResult.autoFillStats || {},
       warnings: engineResult.warnings || [],
@@ -1731,11 +1776,238 @@ const getTimetableDiagnosticsController = async (req, res) => {
   }
 };
 
+// PREVIEW FACULTY OPTIMIZATION (POST /api/timetable/versions/:id/faculty-optimization/preview or POST /api/timetable/faculty-optimization/preview)
+const previewFacultyOptimization = async (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const id = req.params.id;
+    let timetable = null;
+    if (id) {
+      timetable = await Timetable.findById(id).lean();
+    }
+    if (!timetable) {
+      timetable = (await Timetable.findOne({ isAccepted: true }).lean()) || (await Timetable.findOne().sort({ version: -1 }).lean());
+    }
+    if (!timetable) {
+      return sendError(res, 404, 'No timetable version available for faculty optimization');
+    }
+
+    const { loadData } = require('../services/engine/dataLoader');
+    const { gridFromTimetable } = require('../services/engine/persistedValidator');
+    const { optimizeFacultyTimetable } = require('../services/engine/facultyPersonalTimetableOptimizer');
+    const { scoreFacultyQuality } = require('../services/engine/facultyTimetableScorer');
+    const { validateOutput } = require('../services/engine/constraintValidator');
+    const { validateGlobalTimetable } = require('../services/engine/globalTimetableValidator');
+    const { auditTimetable } = require('../services/engine/independentValidator');
+
+    const data = await loadData({});
+    const baseGrid = gridFromTimetable(timetable);
+    const baseScore = scoreFacultyQuality(baseGrid, data);
+
+    const maxPasses = req.body?.maxPasses || 5;
+    const optResult = optimizeFacultyTimetable(baseGrid, data, { maxPasses });
+    const candidateGrid = optResult.grid;
+    const candidateScore = scoreFacultyQuality(candidateGrid, data);
+
+    const valOut = validateOutput(candidateGrid, data, []);
+    const valGlob = validateGlobalTimetable(candidateGrid, data);
+    const valAudit = auditTimetable(candidateGrid, data);
+
+    const isCompletelyValid =
+      valOut.valid &&
+      valGlob.valid &&
+      (!valAudit.hardViolations || valAudit.hardViolations.length === 0);
+
+    const baselineRevision = timetable.revision || 1;
+    const candidateHash = crypto.createHash('sha256')
+      .update(timetable._id.toString() + ':' + baselineRevision + ':' + JSON.stringify(candidateGrid))
+      .digest('hex');
+
+    return sendSuccess(
+      res,
+      200,
+      {
+        version: timetable.version,
+        timetableId: timetable._id.toString(),
+        baselineRevision,
+        candidateHash,
+        improved: optResult.improved,
+        totalMovesAccepted: optResult.totalMovesAccepted,
+        baselineScore: baseScore.overall,
+        baselinePrecise: baseScore.preciseAverage,
+        optimizedScore: candidateScore.overall,
+        optimizedPrecise: candidateScore.preciseAverage,
+        baselineGatedTeachers: baseScore.facultyScores.filter(f => f.isGated).map(f => f.teacherName),
+        optimizedGatedTeachers: candidateScore.facultyScores.filter(f => f.isGated).map(f => f.teacherName),
+        baselineMetrics: {
+          threeConsecutive: baseScore.totalThreeConsecutive,
+          lunchFlanking: baseScore.totalLunchFlanking,
+          dimensionAverages: baseScore.dimensionAverages,
+        },
+        optimizedMetrics: {
+          threeConsecutive: candidateScore.totalThreeConsecutive,
+          lunchFlanking: candidateScore.totalLunchFlanking,
+          dimensionAverages: candidateScore.dimensionAverages,
+        },
+        validation: {
+          isValid: isCompletelyValid,
+          hardViolationsCount:
+            (valOut.hardViolationsCount || 0) +
+            (valGlob.hardViolationsCount || 0) +
+            (valAudit.hardViolations?.length || 0),
+        },
+        repairsAuditTrail: optResult.repairsAuditTrail,
+        candidateGrid,
+        stats: optResult.stats,
+      },
+      'Faculty optimization simulation completed in-memory'
+    );
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
+// APPLY FACULTY OPTIMIZATION (POST /api/timetable/versions/:id/faculty-optimization/apply or POST /api/timetable/faculty-optimization/apply)
+const applyFacultyOptimization = async (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const id = req.params.id;
+    let timetable = null;
+    if (id) {
+      timetable = await Timetable.findById(id);
+    }
+    if (!timetable) {
+      timetable = (await Timetable.findOne({ isAccepted: true })) || (await Timetable.findOne().sort({ version: -1 }));
+    }
+    if (!timetable) {
+      return sendError(res, 404, 'No timetable version available to optimize');
+    }
+
+    const currentRevision = timetable.revision || 1;
+
+    // Concurrency / Stale Preview Guard: verify baseline revision
+    if (req.body?.baselineRevision && req.body.baselineRevision !== currentRevision) {
+      return sendError(
+        res,
+        409,
+        `Stale optimization candidate: timetable is at revision ${currentRevision}, but preview was based on revision ${req.body.baselineRevision}`
+      );
+    }
+
+    const { loadData } = require('../services/engine/dataLoader');
+    const { gridFromTimetable } = require('../services/engine/persistedValidator');
+    const { optimizeFacultyTimetable } = require('../services/engine/facultyPersonalTimetableOptimizer');
+    const { scoreFacultyQuality } = require('../services/engine/facultyTimetableScorer');
+    const { validateOutput } = require('../services/engine/constraintValidator');
+    const { validateGlobalTimetable } = require('../services/engine/globalTimetableValidator');
+    const { auditTimetable } = require('../services/engine/independentValidator');
+
+    const data = await loadData({});
+    let candidateGrid = req.body?.candidateGrid;
+
+    if (!candidateGrid) {
+      const baseGrid = gridFromTimetable(timetable);
+      const optResult = optimizeFacultyTimetable(baseGrid, data, { maxPasses: req.body?.maxPasses || 5 });
+      candidateGrid = optResult.grid;
+    }
+
+    if (!candidateGrid || Object.keys(candidateGrid).length === 0) {
+      return sendError(res, 400, 'Invalid candidate grid: no grid data provided');
+    }
+
+    // Cryptographic Candidate Hash Guard: verify candidate integrity
+    if (req.body?.candidateHash) {
+      const expectedHash = crypto.createHash('sha256')
+        .update(timetable._id.toString() + ':' + currentRevision + ':' + JSON.stringify(candidateGrid))
+        .digest('hex');
+      if (req.body.candidateHash !== expectedHash) {
+        return sendError(res, 400, 'Tampered or mismatched optimization candidate hash');
+      }
+    }
+
+    // Strict 4-Way Independent Validation
+    const valOut = validateOutput(candidateGrid, data, []);
+    const valGlob = validateGlobalTimetable(candidateGrid, data);
+    const valAudit = auditTimetable(candidateGrid, data);
+
+    if (!valOut.valid || valOut.hardViolationsCount > 0) {
+      return sendError(res, 400, `Cannot apply optimization: validateOutput failed with ${valOut.hardViolationsCount} hard violations`);
+    }
+    if (!valGlob.valid || valGlob.hardViolationsCount > 0) {
+      return sendError(res, 400, `Cannot apply optimization: validateGlobalTimetable failed with ${valGlob.hardViolationsCount} collisions`);
+    }
+    if (valAudit && valAudit.hardViolations && valAudit.hardViolations.length > 0) {
+      return sendError(res, 400, `Cannot apply optimization: independent audit failed with ${valAudit.hardViolations.length} hard violations`);
+    }
+
+    // Convert candidateGrid to classTimetables array format
+    const updatedClassTimetables = [];
+    for (const cls of data.classes) {
+      const cid = cls._id.toString();
+      const slots = [];
+      const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+      const PERIODS = [1, 2, 3, 4, 5, 6];
+      DAYS.forEach(day => {
+        PERIODS.forEach(p => {
+          const s = candidateGrid[cid]?.[day]?.[p];
+          if (s && !s.isEmpty && !s.isBreak) {
+            slots.push(s);
+          }
+        });
+      });
+      updatedClassTimetables.push({
+        classId: cls._id,
+        className: cls.name,
+        slots,
+      });
+    }
+
+    // Push snapshot to undoStack before mutating
+    timetable.undoStack = timetable.undoStack || [];
+    timetable.undoStack.push({
+      timestamp: new Date(),
+      action: 'FACULTY_REST_OPTIMIZATION',
+      description: 'Faculty Rest Gap & Personal Schedule Optimization',
+      classTimetables: JSON.parse(JSON.stringify(timetable.classTimetables)),
+      revision: currentRevision,
+    });
+    if (timetable.undoStack.length > 50) timetable.undoStack.shift();
+    timetable.redoStack = [];
+
+    // Atomically commit updated classTimetables
+    timetable.classTimetables = updatedClassTimetables;
+    timetable.facultyQualityScore = scoreFacultyQuality(candidateGrid, data);
+    timetable.revision = currentRevision + 1;
+    timetable.markModified('undoStack');
+    timetable.markModified('redoStack');
+    timetable.markModified('classTimetables');
+    timetable.markModified('facultyQualityScore');
+
+    await timetable.save();
+
+    return sendSuccess(
+      res,
+      200,
+      {
+        version: timetable.version,
+        revision: timetable.revision,
+        facultyQualityScore: timetable.facultyQualityScore,
+        canUndo: timetable.undoStack.length > 0,
+        undoCount: timetable.undoStack.length,
+      },
+      'Faculty optimization successfully applied to timetable'
+    );
+  } catch (error) {
+    return sendError(res, 500, error.message);
+  }
+};
+
 module.exports = {
   getVersions,
   getVersion,
   getAccepted,
   getTeacherTimetable,
+  getFacultyAnalysis,
   getEditHistory,
   getCrossDeptTeachers,
   saveTeacherAvailability,
@@ -1752,6 +2024,8 @@ module.exports = {
   checkEdit,
   previewRebalance,
   applyRebalance,
+  previewFacultyOptimization,
+  applyFacultyOptimization,
   undoLastAction,
   redoLastAction,
   getHistoryStatus,

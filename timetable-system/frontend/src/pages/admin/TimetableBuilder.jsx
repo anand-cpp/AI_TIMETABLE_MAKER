@@ -15,8 +15,10 @@ import PostGenerationReportCard from '../../components/timetable/PostGenerationR
 import CustomClassSelector from '../../components/timetable/CustomClassSelector';
 import OfficialExportModal from '../../components/timetable/OfficialExportModal';
 import ConflictDiagnosticsModal from '../../components/timetable/ConflictDiagnosticsModal';
+import TeacherPersonalTimetableModal from '../../components/teachers/TeacherPersonalTimetableModal';
 import timetableService from '../../services/timetableService';
 import classService from '../../services/classService';
+import teacherService from '../../services/teacherService';
 import overrideService from '../../services/overrideService';
 import {
   Download,
@@ -31,6 +33,7 @@ import {
   Info,
   ExternalLink,
   X,
+  Users,
 } from 'lucide-react';
 
 const TimetableBuilder = () => {
@@ -65,6 +68,18 @@ const TimetableBuilder = () => {
   const [approvedOverrides, setApprovedOverrides] = useState([]);
   const [generationReport, setGenerationReport] = useState(null);
   const [pendingOptions, setPendingOptions] = useState(null);
+
+  // Faculty Personal Timetable Analysis Modal State
+  const [facultyModalOpen, setFacultyModalOpen] = useState(false);
+  const [teachersList, setTeachersList] = useState([]);
+
+  useEffect(() => {
+    teacherService.getAll()
+      .then(res => {
+        setTeachersList(res.data?.teachers || []);
+      })
+      .catch(err => console.warn('Failed to load teachers for faculty modal:', err));
+  }, []);
 
   // Load diagnostics for a timetable version
   const loadDiagnostics = useCallback(async (versionId) => {
@@ -541,6 +556,14 @@ const TimetableBuilder = () => {
                 leftIcon={<FileCheck className="w-4 h-4" strokeWidth={1.5} />}
               >
                 Official Ahalia Format PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFacultyModalOpen(true)}
+                leftIcon={<Users className="w-4 h-4" strokeWidth={1.5} />}
+              >
+                Faculty Timetables & Analysis
               </Button>
               <Button
                 variant="outline"
@@ -1102,6 +1125,14 @@ const TimetableBuilder = () => {
         onClose={() => setOfficialExportOpen(false)}
         classTimetable={currentClassTimetable}
         timetableVersion={activeVersion}
+      />
+
+      {/* Faculty Personal Timetable Analysis Modal */}
+      <TeacherPersonalTimetableModal
+        isOpen={facultyModalOpen}
+        onClose={() => setFacultyModalOpen(false)}
+        teacherId={teachersList[0]?._id}
+        teacherList={teachersList}
       />
 
       {/* Admin Overtime & Permission Request Modal */}
