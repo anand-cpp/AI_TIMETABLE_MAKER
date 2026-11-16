@@ -154,7 +154,7 @@ const isDailyUniquenessExempt = (slot) => {
 };
 
 
-const sharedElectiveToken = (slot, teacherId = null, classId = null) => {
+const sharedElectiveToken = (slot, teacherId = null, classId = null, classMap = null) => {
   if (!slot || slot.isEmpty || slot.isBreak) return null;
 
   // 1. Authorized S8 Capstone Project Phase-2 joint supervision on Thursday/Friday
@@ -167,7 +167,7 @@ const sharedElectiveToken = (slot, teacherId = null, classId = null) => {
   const hasSharedSessionId = Boolean(slot.sharedSessionId);
 
   const cidStr = String(classId || slot.classId || '');
-  const cName = String(slot.className || '');
+  const cName = String(slot.className || classMap?.[cidStr]?.name || '');
   const isS8Class =
     cidStr === '6aeccf3cbb1e84200c3db01f' ||
     cidStr === '6aeccf3cbb1e84200c3db020' ||
@@ -191,14 +191,21 @@ const sharedElectiveToken = (slot, teacherId = null, classId = null) => {
     }
   }
 
-  // 2. Synchronized elective group (must be elective with same electiveGroupId AND same subjectCode)
+  // Determine class semester to prevent cross-semester elective/minor sharing
+  const sem =
+    slot.classSemester ||
+    slot.semester ||
+    classMap?.[cidStr]?.semester ||
+    (cName.match(/S(\d)/i) ? Number(cName.match(/S(\d)/i)[1]) : null);
+
+  // 2. Synchronized elective group (must be elective with same electiveGroupId, matching semester, AND same subjectCode)
   if (slot.isElective && slot.electiveGroupId) {
-    return 'SHARED_ELECTIVE_' + slot.electiveGroupId + '_' + (slot.subjectCode || '');
+    return 'SHARED_ELECTIVE_' + slot.electiveGroupId + '_' + (slot.subjectCode || '') + (sem ? ('_SEM' + sem) : '');
   }
 
-  // 3. Synchronized Minor session (must be minor with same minorGroupId AND same subjectCode)
+  // 3. Synchronized Minor session (must be minor with same minorGroupId, matching semester, AND same subjectCode)
   if (slot.isMinor || slot.subjectType === 'minor') {
-    return 'SHARED_MINOR_' + (slot.minorGroupId || (slot.day + '_P' + slot.period)) + '_' + (slot.minorSubjectCode || slot.subjectCode || '');
+    return 'SHARED_MINOR_' + (slot.minorGroupId || (slot.day + '_P' + slot.period)) + '_' + (slot.minorSubjectCode || slot.subjectCode || '') + (sem ? ('_SEM' + sem) : '');
   }
 
   // Ordinary theory/lab subjects NEVER qualify as shared sessions regardless of sharedSessionId metadata
@@ -315,7 +322,7 @@ const validateGrid = (grid, data) => {
           if (!teacherSchedule[teacherId][day]) teacherSchedule[teacherId][day] = [];
 
           const existingClaim = teacherSchedule[teacherId][day].find((c) => c.period === period);
-          const token = sharedElectiveToken(slot, teacherId, classId);
+          const token = sharedElectiveToken(slot, teacherId, classId, classMap);
 
           if (existingClaim) {
             const sharedSession =
@@ -1215,8 +1222,8 @@ const isSlotValid = (classId, day, period, slot, grid, data, options = {}) => {
       const existingSlot = dayMap[day]?.[period];
       if (!isOccupied(existingSlot)) continue;
       if (slotTeacherIds(existingSlot, teacherMap, teacherNameToIdMap).includes(teacherId)) {
-        const token1 = sharedElectiveToken(slot, teacherId, classId);
-        const token2 = sharedElectiveToken(existingSlot, teacherId, otherClassId);
+        const token1 = sharedElectiveToken(slot, teacherId, classId, data.classMap);
+        const token2 = sharedElectiveToken(existingSlot, teacherId, otherClassId, data.classMap);
         if (!token1 || !token2 || token1 !== token2) return false;
       }
     }

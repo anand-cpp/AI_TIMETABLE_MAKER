@@ -109,6 +109,7 @@ function timetableToGrid(timetable) {
     }
     for (const s of ct.slots || []) {
       const slotObj = s.toObject ? s.toObject() : { ...s };
+      if (!slotObj.className && ct.className) slotObj.className = ct.className;
       if (!grid[cid][slotObj.day]) grid[cid][slotObj.day] = {};
       grid[cid][slotObj.day][slotObj.period] = slotObj;
     }

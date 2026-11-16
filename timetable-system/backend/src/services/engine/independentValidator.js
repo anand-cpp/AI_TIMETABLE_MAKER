@@ -82,25 +82,35 @@ const isAuthorizedSharedSessionGroup = (allocs, day, period, teacherId) => {
     }
   }
 
-  // Case 2: Synchronized Elective (all must be elective with matching electiveGroupId AND matching subjectCode)
+  // Case 2: Synchronized Elective (all must be elective with matching electiveGroupId, matching semester, AND matching subjectCode)
   const firstElectiveGroupId = allocs[0].electiveGroupId;
+  const firstElectiveSem = allocs[0].semester;
   const allElective = allocs.every(a =>
     a.isElective &&
     a.electiveGroupId &&
     a.electiveGroupId === firstElectiveGroupId &&
+    (!firstElectiveSem || !a.semester || a.semester === firstElectiveSem) &&
     a.subjectCode === allocs[0].subjectCode
   );
-  if (allElective) return true;
+  if (allElective) {
+    const semSet = new Set(allocs.map(a => a.semester).filter(Boolean));
+    if (semSet.size <= 1) return true;
+  }
 
-  // Case 3: Synchronized Minor (all must be minor with matching minorGroupId AND matching subjectCode)
+  // Case 3: Synchronized Minor (all must be minor with matching minorGroupId, matching semester, AND matching subjectCode)
   const firstMinorGroupId = allocs[0].minorGroupId;
+  const firstMinorSem = allocs[0].semester;
   const allMinor = allocs.every(a =>
     (a.isMinor || a.subjectType === 'minor') &&
     a.minorGroupId &&
     a.minorGroupId === firstMinorGroupId &&
+    (!firstMinorSem || !a.semester || a.semester === firstMinorSem) &&
     a.subjectCode === allocs[0].subjectCode
   );
-  if (allMinor) return true;
+  if (allMinor) {
+    const semSet = new Set(allocs.map(a => a.semester).filter(Boolean));
+    if (semSet.size <= 1) return true;
+  }
 
   // Ordinary theory/lab subjects can NEVER be shared
   return false;
@@ -174,7 +184,8 @@ function auditTimetable(grid, data, options = {}) {
 
           teacherOccupancy[tid][day][period].push({
             classId,
-            className: cls.name,
+            className: cls.name || slot.className || `Class ${classId}`,
+            semester: cls.semester || (cls.name?.match(/S(\d)/i) ? Number(cls.name.match(/S(\d)/i)[1]) : (slot.className?.match(/S(\d)/i) ? Number(slot.className.match(/S(\d)/i)[1]) : null)),
             day,
             period,
             subjectCode: slot.subjectCode,

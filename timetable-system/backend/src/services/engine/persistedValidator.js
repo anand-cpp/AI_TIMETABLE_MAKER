@@ -52,6 +52,7 @@ const gridFromTimetable = (timetable) => {
         isSharedProject: !!slot.isSharedProject,
         day: slot.day,
         period: slot.period,
+        className: slot.className || classTT.className || '',
       };
     }
   }

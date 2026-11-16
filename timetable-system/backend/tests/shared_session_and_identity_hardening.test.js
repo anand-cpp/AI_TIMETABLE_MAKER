@@ -427,4 +427,58 @@ describe('PHASE 3 HARDENING: SHARED-SESSION AUTHORIZATION & IDENTITY INTEGRITY',
     );
     assert.equal(capstoneConflicts.length, 0, 'Authorized S8 Capstone must have strictly 0 teacher collisions');
   });
+
+  // -------------------------------------------------------------
+  // Test 11: Cross-Semester Elective/Minor Sharing Rejection
+  // -------------------------------------------------------------
+  test('Test 11: Classes in different semesters (e.g. S4 vs S8) sharing identical electiveGroupId must be flagged as collision', () => {
+    const s4a = data.classes.find(c => c.name === 'S4 CSE A');
+    const s8a = data.classes.find(c => c.name === 'S8 CSE A');
+    assert.ok(s4a && s8a);
+    const satheesh = data.teachers.find(t => t.name.includes('Satheeshkumar'));
+    assert.ok(satheesh);
+
+    const testGrid = JSON.parse(JSON.stringify(baseGrid));
+    const testGroupId = 'cross_sem_group_xyz';
+    const testSessionId = 'shared_session_cross_sem';
+
+    testGrid[s4a._id.toString()]['Monday'][1] = {
+      subjectCode: 'CST306',
+      subjectName: 'Shared Elective',
+      isElective: true,
+      electiveGroupId: testGroupId,
+      sharedSessionId: testSessionId,
+      teacherId: satheesh._id.toString(),
+      teacherIds: [satheesh._id.toString()],
+      teacherNames: [satheesh.name],
+      day: 'Monday',
+      period: 1,
+      isEmpty: false,
+    };
+    testGrid[s8a._id.toString()]['Monday'][1] = {
+      subjectCode: 'CST306',
+      subjectName: 'Shared Elective',
+      isElective: true,
+      electiveGroupId: testGroupId,
+      sharedSessionId: testSessionId,
+      teacherId: satheesh._id.toString(),
+      teacherIds: [satheesh._id.toString()],
+      teacherNames: [satheesh.name],
+      day: 'Monday',
+      period: 1,
+      isEmpty: false,
+    };
+
+    const valGrid = validateGrid(testGrid, data);
+    const gridCollisions = (valGrid.violations || []).filter(
+      v => v.type === 'TEACHER_DOUBLE_BOOKED' && v.day === 'Monday' && v.period === 1
+    );
+    assert.ok(gridCollisions.length > 0, 'validateGrid must flag TEACHER_DOUBLE_BOOKED for cross-semester elective sharing');
+
+    const auditRes = auditTimetable(testGrid, data);
+    const auditCollisions = (auditRes.hardViolations || []).filter(
+      v => v.type === 'TEACHER_DOUBLE_BOOKED' && v.day === 'Monday' && v.period === 1
+    );
+    assert.ok(auditCollisions.length > 0, 'auditTimetable must flag TEACHER_DOUBLE_BOOKED for cross-semester elective sharing');
+  });
 });
