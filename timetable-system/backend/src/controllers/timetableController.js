@@ -675,9 +675,29 @@ const editSetSlot = async (req, res) => {
 
     const targetClassName = timetable.classTimetables[classTTIndex]?.className || '';
     const isS8 = targetClassName.includes('S8');
-    const isProject = (slotData?.subjectCode === 'CST416' || slotData?.isSharedProject || slotData?.subjectName?.toLowerCase().includes('project phase'));
-    if ((day === 'Thursday' || day === 'Friday') && isS8 && !isProject) {
-      return sendError(res, 400, 'S8 CSE A and S8 CSE B are strictly reserved for Project Phase-2 (CST416) on Thursday and Friday. Non-project activities are prohibited.');
+    const isThursdayOrFriday = day === 'Thursday' || day === 'Friday';
+
+    // IMMUTABILITY GUARD: Dr S Gunasekaran's S8 CST416 Capstone Project (Thu & Fri P1-P6)
+    if (isS8 && isThursdayOrFriday) {
+      const code = (slotData?.subjectCode || '').toUpperCase();
+      if (code !== 'CST416' && code !== 'CSD416') {
+        return sendError(res, 400, 'S8 CSE A and S8 CSE B are strictly reserved for Project Phase-2 (CST416) on Thursday and Friday. Changing the subject of protected capstone slots is prohibited.');
+      }
+      const tNames = slotData?.teacherNames || [];
+      const tIds = slotData?.teacherIds || (slotData?.teacherId ? [slotData.teacherId] : []);
+      const hasGuna = tNames.some(n => n.includes('Gunasekaran')) || tIds.some(id => String(id) === '6aeccf3cbb1e84200c3db02b');
+      if (!hasGuna) {
+        return sendError(res, 400, 'Dr S Gunasekaran is the mandatory assigned faculty for S8 CST416 Capstone Project and cannot be replaced.');
+      }
+      const isSecA = targetClassName.includes('A');
+      const expectedRoom = isSecA ? 'Room 501' : 'Room 502';
+      if (slotData?.roomName && slotData.roomName !== expectedRoom) {
+        return sendError(res, 400, `${targetClassName} CST416 Capstone Project must be assigned to ${expectedRoom}. Changing the room of protected capstone slots is prohibited.`);
+      }
+      const expectedSharedId = `SHARED_S8_PROJECT_${day.toUpperCase().slice(0, 3)}_P${period}`;
+      if (slotData?.sharedSessionId && slotData.sharedSessionId !== expectedSharedId) {
+        return sendError(res, 400, `S8 CST416 Capstone Project must maintain shared session ${expectedSharedId}. Breaking shared-session relationship is prohibited.`);
+      }
     }
 
     const preEditClassTimetables = JSON.parse(JSON.stringify(timetable.classTimetables));
@@ -739,9 +759,11 @@ const editClearSlot = async (req, res) => {
 
     const targetClassName = timetable.classTimetables[classTTIndex]?.className || '';
     const isS8 = targetClassName.includes('S8');
-    const isProject = (slotData?.subjectCode === 'CST416' || slotData?.isSharedProject || slotData?.subjectName?.toLowerCase().includes('project phase'));
-    if ((day === 'Thursday' || day === 'Friday') && isS8 && !isProject) {
-      return sendError(res, 400, 'S8 CSE A and S8 CSE B are strictly reserved for Project Phase-2 (CST416) on Thursday and Friday. Non-project activities are prohibited.');
+    const isThursdayOrFriday = day === 'Thursday' || day === 'Friday';
+
+    // IMMUTABILITY GUARD: Dr S Gunasekaran's S8 CST416 Capstone Project (Thu & Fri P1-P6)
+    if (isS8 && isThursdayOrFriday) {
+      return sendError(res, 400, 'S8 CSE A and S8 CSE B are strictly reserved for Project Phase-2 (CST416) on Thursday and Friday. Clearing protected capstone slots is prohibited.');
     }
 
     const preEditClassTimetables = JSON.parse(JSON.stringify(timetable.classTimetables));
@@ -838,6 +860,13 @@ const editUnlockSlot = async (req, res) => {
 
     const classTTIndex = timetable.classTimetables.findIndex((ct) => ct.classId.toString() === classId);
     if (classTTIndex === -1) return sendError(res, 404, 'Class not found in timetable');
+
+    const targetClassName = timetable.classTimetables[classTTIndex]?.className || '';
+    const isS8 = targetClassName.includes('S8');
+    if (isS8 && (day === 'Thursday' || day === 'Friday')) {
+      return sendError(res, 400, 'S8 CST416 Capstone Project on Thursday and Friday is permanently locked and cannot be unlocked.');
+    }
+
     const slots = timetable.classTimetables[classTTIndex].slots;
 
     const group = findLabGroup(slots, day, Number(period));
@@ -1840,11 +1869,13 @@ const previewFacultyOptimization = async (req, res) => {
         baselineGatedTeachers: baseScore.facultyScores.filter(f => f.isGated).map(f => f.teacherName),
         optimizedGatedTeachers: candidateScore.facultyScores.filter(f => f.isGated).map(f => f.teacherName),
         baselineMetrics: {
+          fourConsecutive: optResult.initialFourConsecutive ?? 0,
           threeConsecutive: baseScore.totalThreeConsecutive,
           lunchFlanking: baseScore.totalLunchFlanking,
           dimensionAverages: baseScore.dimensionAverages,
         },
         optimizedMetrics: {
+          fourConsecutive: optResult.finalFourConsecutive ?? 0,
           threeConsecutive: candidateScore.totalThreeConsecutive,
           lunchFlanking: candidateScore.totalLunchFlanking,
           dimensionAverages: candidateScore.dimensionAverages,

@@ -1,25 +1,25 @@
 /**
  * Faculty Personal Timetable Optimizer
- * Phase 2 — Constraint-Safe Multi-Activity Rearrangement & Rest-Break Optimizer
+ * Phase 3 — Global Conflict-Aware Multi-Activity Rest-Break Optimization Engine
  *
- * Primary Objective:
- * Optimizes faculty personal schedules so that:
- * - 3+ consecutive teaching periods are eliminated for ordinary theory courses.
- * - Rest breaks and gap periods are intelligently distributed.
- * - Lunch flanking (P3+P4 on Mon-Thu, P4+P5 on Friday) is minimized.
- * - 100% academic placement is strictly preserved (0 missing periods, 0 double bookings).
- * - Fixed slots, laboratory rooms, and elective sync remain 100% protected.
- * - Transactional rollback: baseline is preserved if no improvement can be made safely.
+ * Primary Objectives:
+ * 1. Permanently eliminate 4+ consecutive teaching periods across the entire faculty roster (Rule A).
+ * 2. Eliminate 3 consecutive theory teaching periods without breaks.
+ * 3. Preserve 100% academic workload placement (exactly 237 slots, zero missing, zero unplaced).
+ * 4. Guarantee zero hard-constraint violations (validateOutput, validateGlobalTimetable, auditTimetable).
+ * 5. Strictly preserve legitimate institutional blocks (S8 CST416 full-day, labs, vivas, minor tracks).
+ * 6. Intelligently balance daily workload distribution and minimize lunch-flanking instances.
+ * 7. Transactional fail-safe rollback if no valid improvement can be achieved.
  */
 
-const {
-  scoreFacultyQuality,
-} = require('./facultyTimetableScorer');
+const { scoreFacultyQuality } = require('./facultyTimetableScorer');
 const {
   ACTIVITY_TYPES,
   classifyActivity,
   isInstitutionalLabOrProject,
   isOrdinaryTheory,
+  isSlotImmovable,
+  isAuthorizedCapstoneBlock,
 } = require('./activityClassifier');
 const { validateOutput } = require('./constraintValidator');
 const { validateGlobalTimetable } = require('./globalTimetableValidator');
@@ -73,7 +73,94 @@ function moveSlotToEmpty(grid, classId, src, dest) {
 }
 
 /**
- * Main faculty timetable optimization engine.
+ * Universal detector for sequences of 4 or more consecutive teaching periods
+ * across the complete faculty roster.
+ * Excludes only authorized full-day institutional project supervision (CST416 on Thu/Fri).
+ */
+function findFourPlusConsecutiveRuns(grid, data) {
+  const teachers = data.teachers || [];
+  const classes = data.classes || [];
+  const runs = [];
+
+  for (const t of teachers) {
+    const tid = t._id.toString();
+    const tname = t.name;
+
+    for (const d of DAYS) {
+      const occupiedPeriods = [];
+      const periodDetails = {};
+
+      for (const cls of classes) {
+        for (let p = 1; p <= 6; p++) {
+          const s = grid[cls._id.toString()]?.[d]?.[p];
+          if (!s || s.isEmpty || s.isBreak) continue;
+
+          let matches = false;
+          if (s.teacherId && s.teacherId.toString() === tid) matches = true;
+          if (Array.isArray(s.teacherIds) && s.teacherIds.some(id => id && id.toString() === tid)) matches = true;
+          if (s.batch1TeacherId && s.batch1TeacherId.toString() === tid) matches = true;
+          if (s.batch2TeacherId && s.batch2TeacherId.toString() === tid) matches = true;
+
+          if (matches) {
+            if (!occupiedPeriods.includes(p)) {
+              occupiedPeriods.push(p);
+              periodDetails[p] = [];
+            }
+            periodDetails[p].push({
+              classId: cls._id.toString(),
+              className: cls.name,
+              period: p,
+              slot: s,
+              isImmovable: isSlotImmovable(s),
+            });
+          }
+        }
+      }
+
+      occupiedPeriods.sort((a, b) => a - b);
+
+      let currentRun = [];
+      for (const p of occupiedPeriods) {
+        if (currentRun.length === 0 || p === currentRun[currentRun.length - 1] + 1) {
+          currentRun.push(p);
+        } else {
+          evalRun(currentRun);
+          currentRun = [p];
+        }
+      }
+      evalRun(currentRun);
+
+      function evalRun(run) {
+        if (run.length >= 4) {
+          const runSlots = run.map(p => {
+            const details = periodDetails[p] || [];
+            return details[0]?.slot;
+          });
+          const isAuthCapstone = isAuthorizedCapstoneBlock(runSlots, d, tid) || isAuthorizedCapstoneBlock(runSlots, d, tname);
+          if (isAuthCapstone) {
+            return; // Authorized Capstone Project Phase-2 full-day block for Dr S Gunasekaran
+          }
+          runs.push({
+            teacherId: tid,
+            teacherName: tname,
+            day: d,
+            periods: [...run],
+            length: run.length,
+            details: run.map(p => ({
+              period: p,
+              items: periodDetails[p] || [],
+            })),
+          });
+        }
+      }
+    }
+  }
+
+  return runs;
+}
+
+/**
+ * Main faculty personal timetable optimizer.
  */
 function optimizeFacultyTimetable(grid, data, options = {}) {
   const startTime = Date.now();
@@ -98,33 +185,124 @@ function optimizeFacultyTimetable(grid, data, options = {}) {
 
   const baselineScoreObj = scoreFacultyQuality(baselineGrid, data, scoringConfig);
   let bestGrid = cloneGrid(baselineGrid);
+
+  const initialRuns = findFourPlusConsecutiveRuns(bestGrid, data);
+  let bestFourConsecutive = initialRuns.length;
   let bestScoreSum = baselineScoreObj.totalScoreSum;
   let bestThreeConsecutive = baselineScoreObj.totalThreeConsecutive;
   let bestLunchFlanking = baselineScoreObj.totalLunchFlanking;
 
   const classes = data.classes || [];
   const auditTrail = [];
-
-  // Identify linked S8 classes for synchronized elective swaps
-  const s8a = classes.find(c => c.name.includes('S8') && c.name.includes('A'))?._id?.toString();
-  const s8b = classes.find(c => c.name.includes('S8') && c.name.includes('B'))?._id?.toString();
-
-  let pass = 0;
   let totalAcceptedMoves = 0;
 
+  // ── PHASE A: Targeted 4+ Consecutive Run Resolution ────────────────────────
+  let targetedPass = 0;
+  while (bestFourConsecutive > 0 && targetedPass < 10) {
+    targetedPass++;
+    let targetedResolved = false;
+
+    const currentRuns = findFourPlusConsecutiveRuns(bestGrid, data);
+    for (const run of currentRuns) {
+      const movableItems = [];
+      for (const pDetail of run.details) {
+        for (const item of pDetail.items) {
+          if (!item.isImmovable) {
+            movableItems.push(item);
+          }
+        }
+      }
+
+      let runFixed = false;
+      for (const item of movableItems) {
+        const cid = item.classId;
+        const cls = classes.find(c => c._id.toString() === cid);
+
+        for (const targetDay of DAYS) {
+          for (const targetPeriod of PERIODS) {
+            if (targetDay === run.day && run.periods.includes(targetPeriod)) continue;
+
+            const targetSlot = bestGrid[cid]?.[targetDay]?.[targetPeriod];
+            if (isSlotImmovable(targetSlot)) continue;
+            if (targetSlot?.subjectId && targetSlot.subjectId.toString() === item.slot?.subjectId?.toString()) continue;
+
+            const trialGrid = cloneGrid(bestGrid);
+            const s1 = { day: run.day, period: item.period };
+            const s2 = { day: targetDay, period: targetPeriod };
+
+            const involvesElective = item.slot?.isElective || targetSlot?.isElective;
+            if (involvesElective) {
+              const semClassIds = classes.filter(c => c.semester === cls.semester).map(c => c._id.toString());
+              let canSync = true;
+              for (const otherCid of semClassIds) {
+                const o1 = bestGrid[otherCid]?.[s1.day]?.[s1.period];
+                const o2 = bestGrid[otherCid]?.[s2.day]?.[s2.period];
+                if (isSlotImmovable(o1) || isSlotImmovable(o2)) {
+                  canSync = false;
+                  break;
+                }
+              }
+              if (!canSync) continue;
+              for (const otherCid of semClassIds) {
+                swapClassSlots(trialGrid, otherCid, s1, s2);
+              }
+            } else {
+              if (!targetSlot || targetSlot.isEmpty) moveSlotToEmpty(trialGrid, cid, s1, s2);
+              else swapClassSlots(trialGrid, cid, s1, s2);
+            }
+
+            // Strict Validators
+            const val = validateOutput(trialGrid, data, []);
+            if (!val.valid || val.hardViolationsCount > 0) continue;
+
+            const globalVal = validateGlobalTimetable(trialGrid, data);
+            if (!globalVal.valid || globalVal.hardViolationsCount > 0) continue;
+
+            const auditVal = auditTimetable(trialGrid, data);
+            if (auditVal && auditVal.hardViolations && auditVal.hardViolations.length > 0) continue;
+
+            const trialRuns = findFourPlusConsecutiveRuns(trialGrid, data).length;
+            if (trialRuns < bestFourConsecutive) {
+              const trialScore = scoreFacultyQuality(trialGrid, data, scoringConfig);
+              bestGrid = trialGrid;
+              bestFourConsecutive = trialRuns;
+              bestScoreSum = trialScore.totalScoreSum;
+              bestThreeConsecutive = trialScore.totalThreeConsecutive;
+              bestLunchFlanking = trialScore.totalLunchFlanking;
+              totalAcceptedMoves++;
+              targetedResolved = true;
+              runFixed = true;
+              auditTrail.push({
+                stage: 'TARGETED_REST_GAP_REPAIR',
+                move: `${cls.name}: swapped (${s1.day} P${s1.period}) [${item.slot?.subjectCode}] with (${s2.day} P${s2.period}) [${targetSlot?.subjectCode || 'EMPTY'}]`,
+                fourConsecutiveRemaining: bestFourConsecutive,
+                scoreSum: bestScoreSum,
+              });
+              break;
+            }
+          }
+          if (runFixed) break;
+        }
+        if (runFixed) break;
+      }
+    }
+
+    if (!targetedResolved) break;
+  }
+
+  // ── PHASE B: General Multi-Pass Neighborhood Search (Preserving Rest-Gap Invariants) ──
+  let pass = 0;
   while (pass < maxPasses) {
     pass++;
     let passMoves = 0;
 
     for (const cls of classes) {
       const cid = cls._id.toString();
-      const isS8Linked = (cid === s8a || cid === s8b);
 
-      // Collect all movable and empty slots in this class
       const allSlots = [];
       for (const d of DAYS) {
         for (const p of PERIODS) {
-          allSlots.push({ day: d, period: p, slot: bestGrid[cid]?.[d]?.[p] });
+          allSlots.push({ day: d, period: p });
         }
       }
 
@@ -136,109 +314,72 @@ function optimizeFacultyTimetable(grid, data, options = {}) {
           const slot1 = bestGrid[cid]?.[s1.day]?.[s1.period];
           const slot2 = bestGrid[cid]?.[s2.day]?.[s2.period];
 
-          // 1. Immutable slots: breaks, explicitly locked slots, institutional labs & capstones
-          if (slot1?.isBreak || slot2?.isBreak) continue;
-          if (slot1?.isLocked || slot2?.isLocked) continue;
-          if (isInstitutionalLabOrProject(slot1) || isInstitutionalLabOrProject(slot2)) continue;
+          if (isSlotImmovable(slot1) || isSlotImmovable(slot2)) continue;
 
-          // 2. Do not swap two empty slots
           const s1Empty = !slot1 || slot1.isEmpty;
           const s2Empty = !slot2 || slot2.isEmpty;
           if (s1Empty && s2Empty) continue;
+          if (!s1Empty && !s2Empty && slot1.subjectId && slot1.subjectId.toString() === slot2.subjectId?.toString()) continue;
 
-          // 3. Do not swap identical subjects
-          if (!s1Empty && !s2Empty && slot1.subjectId && slot1.subjectId.toString() === slot2.subjectId?.toString()) {
-            continue;
-          }
-
-          // 4. Minor tracks must never be displaced
-          if (slot1?.isMinor || slot2?.isMinor) continue;
-
-          // Perform trial move on isolated candidate
           const trialGrid = cloneGrid(bestGrid);
           const involvesElective = slot1?.isElective || slot2?.isElective;
 
           if (involvesElective) {
-            // Synchronize elective swap across all participating sections in this semester
-            const semClassIds = (data.classes || [])
-              .filter(c => c.semester === cls.semester)
-              .map(c => c._id.toString());
-
+            const semClassIds = classes.filter(c => c.semester === cls.semester).map(c => c._id.toString());
             let canSync = true;
             for (const otherCid of semClassIds) {
-              const oSlot1 = bestGrid[otherCid]?.[s1.day]?.[s1.period];
-              const oSlot2 = bestGrid[otherCid]?.[s2.day]?.[s2.period];
-              if (
-                oSlot1?.isBreak ||
-                oSlot2?.isBreak ||
-                oSlot1?.isLocked ||
-                oSlot2?.isLocked ||
-                isInstitutionalLabOrProject(oSlot1) ||
-                isInstitutionalLabOrProject(oSlot2) ||
-                oSlot1?.isMinor ||
-                oSlot2?.isMinor
-              ) {
+              const o1 = bestGrid[otherCid]?.[s1.day]?.[s1.period];
+              const o2 = bestGrid[otherCid]?.[s2.day]?.[s2.period];
+              if (isSlotImmovable(o1) || isSlotImmovable(o2)) {
                 canSync = false;
                 break;
               }
             }
             if (!canSync) continue;
-
             for (const otherCid of semClassIds) {
               swapClassSlots(trialGrid, otherCid, s1, s2);
             }
           } else {
-            if (s2Empty) {
-              moveSlotToEmpty(trialGrid, cid, s1, s2);
-            } else if (s1Empty) {
-              moveSlotToEmpty(trialGrid, cid, s2, s1);
-            } else {
-              swapClassSlots(trialGrid, cid, s1, s2);
-            }
+            if (s2Empty) moveSlotToEmpty(trialGrid, cid, s1, s2);
+            else if (s1Empty) moveSlotToEmpty(trialGrid, cid, s2, s1);
+            else swapClassSlots(trialGrid, cid, s1, s2);
           }
 
-          // Strict verification: No hard constraint may be violated
+          // Strict Validators
           const val = validateOutput(trialGrid, data, []);
-          if (!val.valid || val.hardViolationsCount > 0) {
-            continue; // Rejection: Hard constraint violation encountered
-          }
+          if (!val.valid || val.hardViolationsCount > 0) continue;
 
-          // Strict verification: No global collision or desynchronization
           const globalVal = validateGlobalTimetable(trialGrid, data);
-          if (!globalVal.valid || globalVal.hardViolationsCount > 0) {
-            continue; // Rejection: Global hard constraint violation encountered
-          }
+          if (!globalVal.valid || globalVal.hardViolationsCount > 0) continue;
 
-          // Strict verification: Independent validator check (FACULTY_REST_GAP, room clashes, etc.)
           const auditVal = auditTimetable(trialGrid, data);
-          if (auditVal && auditVal.hardViolations && auditVal.hardViolations.length > 0) {
-            continue; // Rejection: Independent validator hard violation encountered
-          }
+          if (auditVal && auditVal.hardViolations && auditVal.hardViolations.length > 0) continue;
 
-          // Strict verification: Subject workload must not be lost
-          const underScheduled = (val.hardViolations || []).filter(v => v.type === 'SUBJECT_UNDER_SCHEDULED');
-          if (underScheduled.length > 0) {
-            continue;
-          }
+          // Invariant: Never accept a move that increases 4+ consecutive teaching runs
+          const trialRuns = findFourPlusConsecutiveRuns(trialGrid, data).length;
+          if (trialRuns > bestFourConsecutive) continue;
 
-          // Evaluate candidate faculty score
           const trialScore = scoreFacultyQuality(trialGrid, data, scoringConfig);
 
           // Acceptance criteria:
-          // A) Elimination of 3+ consecutive periods takes utmost priority
-          // B) Improvement in overall faculty score sum
-          // C) Reduction in lunch flanking when score sum is equal
-          const isStrictlyBetter =
-            trialScore.totalThreeConsecutive < bestThreeConsecutive ||
-            (trialScore.totalThreeConsecutive === bestThreeConsecutive && trialScore.totalScoreSum > bestScoreSum) ||
-            (trialScore.totalThreeConsecutive === bestThreeConsecutive &&
+          // 1. Strict elimination of 4+ consecutive runs
+          // 2. Strict elimination of 3 consecutive theory periods
+          // 3. Strict increase in score sum
+          // 4. Strict decrease in lunch flanking
+          const isBetter =
+            trialRuns < bestFourConsecutive ||
+            (trialRuns === bestFourConsecutive && trialScore.totalThreeConsecutive < bestThreeConsecutive) ||
+            (trialRuns === bestFourConsecutive &&
+              trialScore.totalThreeConsecutive === bestThreeConsecutive &&
+              trialScore.totalScoreSum > bestScoreSum) ||
+            (trialRuns === bestFourConsecutive &&
+              trialScore.totalThreeConsecutive === bestThreeConsecutive &&
               trialScore.totalScoreSum === bestScoreSum &&
               trialScore.totalLunchFlanking < bestLunchFlanking);
 
-          if (isStrictlyBetter) {
-            const moveDesc = `Class ${cls.name}: swapped (${s1.day} P${s1.period}) [${slot1?.subjectCode || 'EMPTY'}] with (${s2.day} P${s2.period}) [${slot2?.subjectCode || 'EMPTY'}]`;
-
+          if (isBetter) {
             bestGrid = trialGrid;
+            bestFourConsecutive = trialRuns;
             bestScoreSum = trialScore.totalScoreSum;
             bestThreeConsecutive = trialScore.totalThreeConsecutive;
             bestLunchFlanking = trialScore.totalLunchFlanking;
@@ -246,22 +387,20 @@ function optimizeFacultyTimetable(grid, data, options = {}) {
             totalAcceptedMoves++;
 
             auditTrail.push({
-              pass,
-              className: cls.name,
-              move: moveDesc,
+              stage: `NEIGHBORHOOD_PASS_${pass}`,
+              move: `${cls.name}: swapped (${s1.day} P${s1.period}) [${slot1?.subjectCode || 'EMPTY'}] with (${s2.day} P${s2.period}) [${slot2?.subjectCode || 'EMPTY'}]`,
+              fourConsecutiveRemaining: bestFourConsecutive,
               scoreSum: bestScoreSum,
               threeConsecutive: bestThreeConsecutive,
               lunchFlanking: bestLunchFlanking,
             });
-            break; // Move to next slot pair
+            break;
           }
         }
       }
     }
 
-    if (passMoves === 0) {
-      break; // Optimization converged
-    }
+    if (passMoves === 0) break;
   }
 
   // Final verification of optimized solution against baseline
@@ -270,14 +409,14 @@ function optimizeFacultyTimetable(grid, data, options = {}) {
   const finalGlobalVal = validateGlobalTimetable(bestGrid, data);
   const finalAudit = auditTimetable(bestGrid, data);
 
-  // Fail-safe guarantee: If for any reason the final solution regressed or introduced any violation, revert to baseline
+  // Fail-safe guarantee: Revert to baseline if any hard violation was introduced
   if (
     !finalVal.valid ||
     finalVal.hardViolationsCount > 0 ||
     !finalGlobalVal.valid ||
     finalGlobalVal.hardViolationsCount > 0 ||
     (finalAudit && finalAudit.hardViolations && finalAudit.hardViolations.length > 0) ||
-    finalScoreObj.overall < baselineScoreObj.overall
+    bestFourConsecutive > initialRuns.length
   ) {
     return {
       success: true,
@@ -285,21 +424,24 @@ function optimizeFacultyTimetable(grid, data, options = {}) {
       grid: baselineGrid,
       baselineScore: baselineScoreObj.overall,
       finalScore: baselineScoreObj.overall,
+      initialFourConsecutive: initialRuns.length,
+      finalFourConsecutive: initialRuns.length,
       baselineMetrics: {
         threeConsecutive: baselineScoreObj.totalThreeConsecutive,
         lunchFlanking: baselineScoreObj.totalLunchFlanking,
         scoreSum: baselineScoreObj.totalScoreSum,
-        dimensionAverages: baselineScoreObj.dimensionAverages,
+        fourConsecutive: initialRuns.length,
       },
       finalMetrics: {
         threeConsecutive: baselineScoreObj.totalThreeConsecutive,
         lunchFlanking: baselineScoreObj.totalLunchFlanking,
         scoreSum: baselineScoreObj.totalScoreSum,
-        dimensionAverages: baselineScoreObj.dimensionAverages,
+        fourConsecutive: initialRuns.length,
       },
       totalMovesAccepted: 0,
       repairsAuditTrail: [],
       stats: {
+        terminationReason: bestFourConsecutive > 0 ? 'SEARCH_BUDGET_EXHAUSTED' : 'CONVERGED',
         passesRun: pass,
         timeMs: Date.now() - startTime,
       },
@@ -312,21 +454,24 @@ function optimizeFacultyTimetable(grid, data, options = {}) {
     grid: bestGrid,
     baselineScore: baselineScoreObj.overall,
     finalScore: finalScoreObj.overall,
+    initialFourConsecutive: initialRuns.length,
+    finalFourConsecutive: bestFourConsecutive,
     baselineMetrics: {
       threeConsecutive: baselineScoreObj.totalThreeConsecutive,
       lunchFlanking: baselineScoreObj.totalLunchFlanking,
       scoreSum: baselineScoreObj.totalScoreSum,
-      dimensionAverages: baselineScoreObj.dimensionAverages,
+      fourConsecutive: initialRuns.length,
     },
     finalMetrics: {
       threeConsecutive: finalScoreObj.totalThreeConsecutive,
       lunchFlanking: finalScoreObj.totalLunchFlanking,
       scoreSum: finalScoreObj.totalScoreSum,
-      dimensionAverages: finalScoreObj.dimensionAverages,
+      fourConsecutive: bestFourConsecutive,
     },
     totalMovesAccepted: totalAcceptedMoves,
     repairsAuditTrail: auditTrail,
     stats: {
+      terminationReason: bestFourConsecutive === 0 ? 'REST_GAPS_FULLY_SATISFIED' : 'SEARCH_BUDGET_EXHAUSTED',
       passesRun: pass,
       timeMs: Date.now() - startTime,
     },
@@ -338,6 +483,8 @@ module.exports = {
   swapClassSlots,
   moveSlotToEmpty,
   optimizeFacultyTimetable,
+  findFourPlusConsecutiveRuns,
+  isSlotImmovable,
   isInstitutionalLabOrProject,
   isOrdinaryTheory,
   classifyActivity,

@@ -270,6 +270,51 @@ function isUnknownActivity(slot) {
   return Boolean(classification && classification.type === ACTIVITY_TYPES.UNKNOWN);
 }
 
+/**
+ * Checks whether a slot is an institutional immutable session that cannot be rearranged
+ * (e.g. breaks, full-day capstone projects, lab blocks, vivas, or minor tracks).
+ */
+function isSlotImmovable(slot) {
+  if (!slot || slot.isEmpty) return false;
+  if (slot.isBreak) return true;
+  if (isInstitutionalLabOrProject(slot)) return true;
+  if (slot.isMinor) return true;
+  if (slot.isFixed) return true;
+  if (slot.fixedSlots && slot.fixedSlots.length > 0) return true;
+  if (slot.subjectCode === 'CST416' || slot.subjectCode === 'CSD416' || slot.subjectCode === 'CST404') return true;
+  return false;
+}
+
+/**
+ * Checks whether an activity run or slot is part of the authorized S8 Capstone Project.
+ * Narrowly scoped to: Dr S Gunasekaran, CST416/CSD416, Thursday/Friday, S8 CSE A & B.
+ *
+ * @param {Object|Array} slotOrSlots - Slot object or array of slot objects
+ * @param {string} day - Day of the week
+ * @param {string} teacherNameOrId - Teacher name or ID string
+ * @returns {boolean}
+ */
+function isAuthorizedCapstoneBlock(slotOrSlots, day, teacherNameOrId) {
+  if (day !== 'Thursday' && day !== 'Friday') return false;
+  if (!teacherNameOrId) return false;
+
+  const tStr = String(teacherNameOrId).toLowerCase();
+  const isGuna = tStr.includes('gunasekaran') || tStr.includes('6aeccf3cbb1e84200c3db02b');
+  if (!isGuna) return false;
+
+  const slots = Array.isArray(slotOrSlots) ? slotOrSlots : [slotOrSlots];
+  if (slots.length === 0) return false;
+
+  return slots.every(s => {
+    if (!s || s.isEmpty || s.isBreak) return false;
+    const code = (s.subjectCode || '').toUpperCase();
+    const isProjCode = code === 'CST416' || code === 'CSD416' || Boolean(s.isSharedProject);
+    const className = s.className || '';
+    const isS8Class = !className || className.includes('S8');
+    return isProjCode && isS8Class;
+  });
+}
+
 module.exports = {
   ACTIVITY_TYPES,
   classifyActivity,
@@ -278,4 +323,6 @@ module.exports = {
   isPlacement,
   isTutorial,
   isUnknownActivity,
+  isSlotImmovable,
+  isAuthorizedCapstoneBlock,
 };

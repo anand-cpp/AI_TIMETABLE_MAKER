@@ -471,6 +471,27 @@ const updateSubject = async (req, res) => {
       fixedSlots,
     } = req.body;
 
+    // IMMUTABILITY GUARD: S8 CST416 Capstone Project Protection
+    const isCapstone = (subject.code === 'CST416' || subject.code === 'CSD416');
+    if (isCapstone) {
+      if (req.body.fixedSlots !== undefined || req.body.fixedSlot !== undefined) {
+        const slotsToUse = req.body.fixedSlots || (req.body.fixedSlot ? [req.body.fixedSlot] : []);
+        const DAYS = ['Thursday', 'Friday'];
+        const PERIODS = [1, 2, 3, 4, 5, 6];
+        const hasAll12 = DAYS.every(d => PERIODS.every(p => slotsToUse.some(s => s.day === d && Number(s.period) === p && s.isMandatory !== false)));
+        if (!hasAll12) {
+          return sendError(res, 400, 'S8 CST416 Capstone Project requires all 12 mandatory fixed slots on Thursday (P1-P6) and Friday (P1-P6). Changing required capstone fixed slots is prohibited.');
+        }
+      }
+      if (req.body.teachers !== undefined) {
+        const tArr = Array.isArray(req.body.teachers) ? req.body.teachers : [];
+        const hasGuna = tArr.some(t => String(t._id || t) === '6aeccf3cbb1e84200c3db02b');
+        if (!hasGuna) {
+          return sendError(res, 400, 'Dr S Gunasekaran is the mandatory assigned faculty for S8 CST416 Capstone Project and cannot be removed.');
+        }
+      }
+    }
+
     // Validate with existing type (type cannot be changed)
     const dataToValidate = {
       ...req.body,
@@ -560,6 +581,10 @@ const deleteSubject = async (req, res) => {
   try {
     const subject = await Subject.findById(req.params.id);
     if (!subject) return sendError(res, 404, 'Subject not found');
+
+    if (subject.code === 'CST416' || subject.code === 'CSD416') {
+      return sendError(res, 400, 'S8 CST416 Capstone Project is a permanently locked mandatory subject and cannot be deleted.');
+    }
 
     // Remove subject reference from parent class
     await Class.findByIdAndUpdate(subject.classId, {

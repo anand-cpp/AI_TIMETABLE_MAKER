@@ -34,6 +34,7 @@ const {
   isPlacement,
   isTutorial,
   isUnknownActivity,
+  isAuthorizedCapstoneBlock,
 } = require('./activityClassifier');
 
 const DEFAULT_FACULTY_SCORING_CONFIG = {
@@ -45,6 +46,7 @@ const DEFAULT_FACULTY_SCORING_CONFIG = {
     institutionalIntegrity: 15,
   },
   penalties: {
+    fourConsecutiveTeaching: 30,    // Severe penalty for 4+ consecutive teaching periods
     threeConsecutiveTheory: 25,     // Completely zeroes out the consecutiveRest dimension
     twoConsecutiveWithoutBreak: 2,  // Deducted when a 2-period block has no succeeding rest
     lunchFlanking: 4,               // Deducted per day with classes flanking lunch (P3+P4 or Fri P4+P5)
@@ -70,12 +72,45 @@ function scoreSingleFacultySchedule(record, config = DEFAULT_FACULTY_SCORING_CON
   // --- Dimension 1: Consecutive Rest & Fatigue Prevention (25 pts) ---
   let consecutiveScore = weights.consecutiveRest;
   let threeConsecutiveCount = 0;
+  let fourConsecutiveCount = 0;
   let unbufferedPairsCount = 0;
 
   DAYS.forEach(day => {
     const slotsMap = scheduleGrid[day] || {};
     const periodsTaught = Object.keys(slotsMap).map(Number).sort((a, b) => a - b);
     const dayMetrics = analyzeDayRunsAndGaps(periodsTaught, day);
+
+    // Global Check: Sequences of 4 or more consecutive teaching periods (Rule A)
+    let rawRun = [];
+    periodsTaught.forEach(p => {
+      if (rawRun.length === 0 || p === rawRun[rawRun.length - 1] + 1) {
+        rawRun.push(p);
+      } else {
+        checkRawRun(rawRun);
+        rawRun = [p];
+      }
+    });
+    checkRawRun(rawRun);
+
+    function checkRawRun(run) {
+      if (run.length >= 4) {
+        // Exclude authorized full-day Capstone Project blocks (S8 CST416 on Thu/Fri for Dr S Gunasekaran)
+        const runSlots = run.map(cp => slotsMap[cp]);
+        const isAuthCapstone = isAuthorizedCapstoneBlock(runSlots, day, teacherId) || isAuthorizedCapstoneBlock(runSlots, day, teacherName);
+        if (isAuthCapstone) {
+          return;
+        }
+        fourConsecutiveCount++;
+        penaltiesApplied.push({
+          dimension: 'consecutiveRest',
+          type: 'FOUR_OR_MORE_CONSECUTIVE_TEACHING',
+          day,
+          periods: [...run],
+          penalty: penalties.fourConsecutiveTeaching || 30,
+          message: `${teacherName} teaches ${run.length} consecutive periods on ${day} (${run.join(', ')}) without a rest gap`,
+        });
+      }
+    }
 
     dayMetrics.consecutiveRuns.forEach(run => {
       // Within this occupied run (already bounded by lunch), extract contiguous sub-runs of ordinary theory
@@ -128,7 +163,7 @@ function scoreSingleFacultySchedule(record, config = DEFAULT_FACULTY_SCORING_CON
     });
   });
 
-  if (threeConsecutiveCount > 0) {
+  if (fourConsecutiveCount > 0 || threeConsecutiveCount > 0) {
     consecutiveScore = 0;
   } else {
     consecutiveScore = Math.max(0, consecutiveScore - unbufferedPairsCount * penalties.twoConsecutiveWithoutBreak);
@@ -274,7 +309,7 @@ function scoreSingleFacultySchedule(record, config = DEFAULT_FACULTY_SCORING_CON
   const rawOverall =
     consecutiveScore + lunchScore + dailyBalanceScore + idleGapScore + institutionalScore;
 
-  const isGated = threeConsecutiveCount > 0 || teacherDoubleBookingCount > 0;
+  const isGated = fourConsecutiveCount > 0 || threeConsecutiveCount > 0 || teacherDoubleBookingCount > 0;
   const overallScore = isGated ? Math.min(rawOverall, 40) : rawOverall;
 
   return {
@@ -288,6 +323,7 @@ function scoreSingleFacultySchedule(record, config = DEFAULT_FACULTY_SCORING_CON
     idleGapScore,
     institutionalScore,
     threeConsecutiveCount,
+    fourConsecutiveCount,
     lunchFlankingDaysCount,
     dailyLoads,
     penaltiesApplied,
@@ -310,6 +346,7 @@ function scoreFacultyQuality(gridOrTimetable, data = {}, customConfig = {}) {
   const facultyScores = [];
   let totalScoreSum = 0;
   let activeFacultyCount = 0;
+  let totalFourConsecutive = 0;
   let totalThreeConsecutive = 0;
   let totalLunchFlanking = 0;
   let totalDoubleBookings = 0;
@@ -321,6 +358,7 @@ function scoreFacultyQuality(gridOrTimetable, data = {}, customConfig = {}) {
     if (record.allocations.length > 0) {
       activeFacultyCount++;
       totalScoreSum += singleScore.overallScore;
+      totalFourConsecutive += (singleScore.fourConsecutiveCount || 0);
       totalThreeConsecutive += singleScore.threeConsecutiveCount;
       totalLunchFlanking += singleScore.lunchFlankingDaysCount;
       if (singleScore.penaltiesApplied.some(p => p.type === 'TEACHER_DOUBLE_BOOKING')) {
@@ -330,7 +368,7 @@ function scoreFacultyQuality(gridOrTimetable, data = {}, customConfig = {}) {
   }
 
   const averageScore = activeFacultyCount > 0 ? Math.round(totalScoreSum / activeFacultyCount) : 100;
-  const isGated = totalDoubleBookings > 0 || totalThreeConsecutive > 0;
+  const isGated = totalDoubleBookings > 0 || totalFourConsecutive > 0 || totalThreeConsecutive > 0;
 
   // Sort faculty by score ascending to identify worst-performing schedules
   facultyScores.sort((a, b) => a.overallScore - b.overallScore);
@@ -359,9 +397,10 @@ function scoreFacultyQuality(gridOrTimetable, data = {}, customConfig = {}) {
     preciseAverage: activeFacultyCount > 0 ? totalScoreSum / activeFacultyCount : 100,
     isGated,
     gateReason: isGated
-      ? `${totalDoubleBookings} faculty collision(s) or ${totalThreeConsecutive} three-consecutive-period violation(s) present.`
+      ? `${totalDoubleBookings} faculty collision(s), ${totalFourConsecutive} four-consecutive run(s), or ${totalThreeConsecutive} three-consecutive violation(s) present.`
       : null,
     activeFacultyCount,
+    totalFourConsecutive,
     totalThreeConsecutive,
     totalLunchFlanking,
     totalDoubleBookings,
